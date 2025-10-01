@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.pnp.*
+.pnpm-store/
+.turbo/
+.vscode/
+.env
+.env.*
+*.log
+coverage/
+.DS_Store
+.data/
