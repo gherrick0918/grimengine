@@ -1,0 +1,45 @@
+# Default: normalize to LF in repo; convert on checkout per rules below
+*               text=auto eol=lf
+
+# Windows scripts should stay CRLF on checkout
+*.bat           eol=crlf
+*.cmd           eol=crlf
+*.ps1           eol=crlf
+
+# Unix-y scripts explicitly LF
+*.sh            eol=lf
+
+# Source & configs (force LF for consistency)
+*.ts            text eol=lf
+*.tsx           text eol=lf
+*.js            text eol=lf
+*.cjs           text eol=lf
+*.mjs           text eol=lf
+*.json          text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.md            text eol=lf
+*.css           text eol=lf
+*.html          text eol=lf
+pnpm-workspace.yaml text eol=lf
+pnpm-lock.yaml  text eol=lf
+turbo.json      text eol=lf
+tsconfig.json   text eol=lf
+.eslintrc.*     text eol=lf
+.prettierrc*    text eol=lf
+.gitignore      text eol=lf
+
+# Binaries (never normalize / diff)
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.webp          binary
+*.pdf           binary
+*.zip           binary
+*.7z            binary
+*.gz            binary
+*.tar           binary
+*.db            binary
+*.sqlite        binary
+*.wasm          binary
