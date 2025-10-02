@@ -1,0 +1,10 @@
+{
+  "name": "Aerin",
+  "level": 3,
+  "abilities": { "STR": 16, "DEX": 14, "CON": 12, "INT": 10, "WIS": 10, "CHA": 8 },
+  "proficiencies": {
+    "weapons": { "martial": true },
+    "saves": ["STR", "CON"],
+    "skills": ["Athletics", "Perception"]
+  }
+}
