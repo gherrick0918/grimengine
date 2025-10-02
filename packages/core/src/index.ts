@@ -24,3 +24,16 @@ export type {
   ResolveAttackOptions,
   ResolveAttackResult,
 } from './combat.js';
+export {
+  chooseAttackAbility,
+  resolveWeaponAttack,
+} from './weapons.js';
+export type {
+  Weapon,
+  WeaponCategory,
+  WeaponType,
+  DamageType,
+  AbilityMods,
+  Proficiencies,
+  WeaponAttackInput,
+} from './weapons.js';

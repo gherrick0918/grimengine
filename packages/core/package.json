@@ -9,7 +9,8 @@
     "./dice": "./src/dice.ts",
     "./abilityScores": "./src/abilityScores.ts",
     "./checks": "./src/checks.ts",
-    "./combat": "./src/combat.ts"
+    "./combat": "./src/combat.ts",
+    "./weapons": "./src/weapons.ts"
   },
   "scripts": {
     "test": "vitest"

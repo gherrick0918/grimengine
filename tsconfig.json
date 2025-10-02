@@ -7,7 +7,9 @@
     "baseUrl": ".",
     "paths": {
       "@grimengine/core": ["packages/core/src/index.ts"],
-      "@grimengine/core/*": ["packages/core/src/*"]
+      "@grimengine/core/*": ["packages/core/src/*"],
+      "@grimengine/rules-srd": ["packages/adapters/rules-srd/src/index.ts"],
+      "@grimengine/rules-srd/*": ["packages/adapters/rules-srd/src/*"]
     },
 
     // Environment Settings
