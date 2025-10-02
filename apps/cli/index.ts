@@ -16,15 +16,22 @@ import {
   proficiencyBonusForLevel,
   characterAbilityCheck,
   characterSavingThrow,
+  characterSkillCheck,
   characterWeaponAttack,
   setCharacterWeaponLookup,
   isProficientSave,
+  isProficientSkill,
+  skillAbility,
+  hasExpertise,
+  passivePerception,
+  SKILL_ABILITY,
   type AbilityName,
   type AttackRollResult,
   type AbilityMods,
   type Proficiencies,
   type Weapon,
   type Character,
+  type SkillName,
 } from '@grimengine/core';
 import { WEAPONS, getWeaponByName } from '@grimengine/rules-srd/weapons';
 import { clearCharacter, loadCharacter, saveCharacter } from './session';
@@ -51,14 +58,22 @@ function showUsage(): void {
   console.log('  pnpm dev -- character show');
   console.log('  pnpm dev -- character check <ability> [--dc <n>] [--adv|--dis] [--seed <value>] [--extraMod <n>]');
   console.log('  pnpm dev -- character save <ability> [--dc <n>] [--adv|--dis] [--seed <value>]');
+  console.log('  pnpm dev -- character skill "<SkillName>" [--dc <n>] [--adv|--dis] [--seed <value>] [--extraMod <n>]');
+  console.log('  pnpm dev -- character skills');
   console.log('  pnpm dev -- character attack "<name>" [--twohanded] [--ac <n>] [--adv|--dis] [--seed <value>]');
   console.log('  pnpm dev -- character unload');
 }
 
 const ABILITY_NAMES: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
+const SKILL_NAMES = Object.keys(SKILL_ABILITY) as SkillName[];
 
 function isAbilityName(value: string): value is AbilityName {
   return ABILITY_NAMES.includes(value as AbilityName);
+}
+
+function normalizeSkillName(raw: string): SkillName | undefined {
+  const target = raw.trim().toLowerCase();
+  return SKILL_NAMES.find((skill) => skill.toLowerCase() === target);
 }
 
 setCharacterWeaponLookup(getWeaponByName);
@@ -198,6 +213,133 @@ function handleCharacterShowCommand(): void {
 
   const skillProfs = character.proficiencies?.skills ?? [];
   console.log(`Skills: ${skillProfs.length > 0 ? skillProfs.join(', ') : 'none'}`);
+
+  console.log(`Passive Perception: ${passivePerception(character)}`);
+
+  process.exit(0);
+}
+
+function handleCharacterSkillsCommand(): void {
+  console.log('Skills:');
+  SKILL_NAMES.forEach((skill) => {
+    console.log(`- ${skill} (${SKILL_ABILITY[skill]})`);
+  });
+  process.exit(0);
+}
+
+function handleCharacterSkillCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Missing skill name for character skill check.');
+    process.exit(1);
+  }
+
+  const skillName = normalizeSkillName(rawArgs[0]);
+  if (!skillName) {
+    console.error(`Unknown skill: ${rawArgs[0]}`);
+    console.error('Use `pnpm dev -- character skills` to list available skills.');
+    process.exit(1);
+  }
+
+  const character = requireLoadedCharacter();
+
+  let dc: number | undefined;
+  let advantage = false;
+  let disadvantage = false;
+  let seed: string | undefined;
+  let extraMod = 0;
+
+  for (let i = 1; i < rawArgs.length; i += 1) {
+    const arg = rawArgs[i];
+    const lower = arg.toLowerCase();
+
+    if (lower === '--adv' || lower === '--advantage') {
+      advantage = true;
+      continue;
+    }
+
+    if (lower === '--dis' || lower === '--disadvantage' || lower === '--disadv') {
+      disadvantage = true;
+      continue;
+    }
+
+    if (arg.startsWith('--dc=')) {
+      dc = parseSignedInteger(arg.slice('--dc='.length), '--dc');
+      continue;
+    }
+
+    if (lower === '--dc') {
+      dc = parseSignedInteger(rawArgs[i + 1], '--dc');
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--seed=')) {
+      seed = arg.slice('--seed='.length);
+      continue;
+    }
+
+    if (lower === '--seed') {
+      if (i + 1 >= rawArgs.length) {
+        console.error('Expected value after --seed.');
+        process.exit(1);
+      }
+      seed = rawArgs[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--extramod=')) {
+      extraMod = parseSignedInteger(arg.slice('--extramod='.length), '--extraMod');
+      continue;
+    }
+
+    if (lower === '--extramod') {
+      extraMod = parseSignedInteger(rawArgs[i + 1], '--extraMod');
+      i += 1;
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  if (advantage && disadvantage) {
+    console.error('Cannot roll with both advantage and disadvantage.');
+    process.exit(1);
+  }
+
+  const result = characterSkillCheck(character, skillName, {
+    dc,
+    advantage,
+    disadvantage,
+    seed,
+    extraMod,
+  });
+
+  const ability = skillAbility(skillName);
+  const mods = abilityMods(character.abilities);
+  const baseMod = mods[ability] ?? 0;
+  const proficient = isProficientSkill(character, skillName);
+  const expertise = hasExpertise(character, skillName);
+  const pb = proficiencyBonusForLevel(character.level);
+  const pbBonus = proficient ? (expertise ? pb * 2 : pb) : 0;
+  const modifierParts = [`base ${formatModifier(baseMod)}`];
+  if (pbBonus !== 0) {
+    modifierParts.push(`PB ${formatModifier(pbBonus)}`);
+  }
+  if (extraMod !== 0) {
+    modifierParts.push(`extra ${formatModifier(extraMod)}`);
+  }
+
+  const advLabel = advantage ? ' adv' : disadvantage ? ' dis' : '';
+  const dcLabel = typeof dc === 'number' ? ` vs DC ${dc}` : '';
+  console.log(`Skill Check: ${skillName} (${ability})${advLabel}${dcLabel}`.trim());
+  console.log(`Mods: ${modifierParts.join(', ')}`);
+  console.log(`Rolls: [${result.rolls.join(', ')}] → total ${result.total}`);
+  if (typeof result.success === 'boolean') {
+    console.log(`Result: ${result.success ? 'SUCCESS' : 'FAILURE'}`);
+  } else {
+    console.log(`Result: ${result.total}`);
+  }
 
   process.exit(0);
 }
@@ -562,6 +704,16 @@ function handleCharacterCommand(rawArgs: string[]): void {
 
   if (subcommand === 'save') {
     handleCharacterSaveCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'skill') {
+    handleCharacterSkillCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'skills') {
+    handleCharacterSkillsCommand();
     return;
   }
 
