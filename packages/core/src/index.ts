@@ -15,3 +15,12 @@ export type {
 } from './abilityScores.js';
 export { abilityCheck, savingThrow } from './checks.js';
 export type { CheckOptions, CheckResult } from './checks.js';
+export { attackRoll, damageRoll, resolveAttack } from './combat.js';
+export type {
+  AttackRollOptions,
+  AttackRollResult,
+  DamageRollOptions,
+  DamageRollResult,
+  ResolveAttackOptions,
+  ResolveAttackResult,
+} from './combat.js';

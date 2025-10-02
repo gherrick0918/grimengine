@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./dice": "./src/dice.ts",
     "./abilityScores": "./src/abilityScores.ts",
-    "./checks": "./src/checks.ts"
+    "./checks": "./src/checks.ts",
+    "./combat": "./src/combat.ts"
   },
   "scripts": {
     "test": "vitest"
