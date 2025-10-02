@@ -6,7 +6,8 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./dice": "./src/dice.ts"
+    "./dice": "./src/dice.ts",
+    "./abilityScores": "./src/abilityScores.ts"
   },
   "scripts": {
     "test": "vitest"
