@@ -27,6 +27,7 @@ import {
   type Character,
 } from '@grimengine/core';
 import { WEAPONS, getWeaponByName } from '@grimengine/rules-srd/weapons';
+import { clearCharacter, loadCharacter, saveCharacter } from './session';
 
 function showUsage(): void {
   console.log('Usage:');
@@ -51,6 +52,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- character check <ability> [--dc <n>] [--adv|--dis] [--seed <value>] [--extraMod <n>]');
   console.log('  pnpm dev -- character save <ability> [--dc <n>] [--adv|--dis] [--seed <value>]');
   console.log('  pnpm dev -- character attack "<name>" [--twohanded] [--ac <n>] [--adv|--dis] [--seed <value>]');
+  console.log('  pnpm dev -- character unload');
 }
 
 const ABILITY_NAMES: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
@@ -60,8 +62,6 @@ function isAbilityName(value: string): value is AbilityName {
 }
 
 setCharacterWeaponLookup(getWeaponByName);
-
-let CURRENT_CHARACTER: Character | null = null;
 
 function parseModifier(value: string | undefined): number {
   if (!value) {
@@ -114,11 +114,12 @@ function formatWeaponProperties(weapon: Weapon): string {
 }
 
 function requireLoadedCharacter(): Character {
-  if (!CURRENT_CHARACTER) {
+  const character = loadCharacter();
+  if (!character) {
     console.error('No character loaded. Use `pnpm dev -- character load "<path.json>"` first.');
     process.exit(1);
   }
-  return CURRENT_CHARACTER;
+  return character;
 }
 
 function handleCharacterLoadCommand(path: string | undefined): void {
@@ -159,7 +160,7 @@ function handleCharacterLoadCommand(path: string | undefined): void {
     };
 
     const pb = proficiencyBonusForLevel(character.level);
-    CURRENT_CHARACTER = character;
+    saveCharacter(character);
     console.log(`Loaded character ${character.name} (lvl ${character.level}). PB ${formatModifier(pb)}`);
     process.exit(0);
   } catch (error) {
@@ -529,6 +530,12 @@ function handleCharacterAttackCommand(rawArgs: string[]): void {
   }
 }
 
+function handleCharacterUnloadCommand(): void {
+  clearCharacter();
+  console.log('Character session cleared.');
+  process.exit(0);
+}
+
 function handleCharacterCommand(rawArgs: string[]): void {
   if (rawArgs.length === 0) {
     console.error('Missing character subcommand.');
@@ -560,6 +567,11 @@ function handleCharacterCommand(rawArgs: string[]): void {
 
   if (subcommand === 'attack') {
     handleCharacterAttackCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'unload') {
+    handleCharacterUnloadCommand();
     return;
   }
 
