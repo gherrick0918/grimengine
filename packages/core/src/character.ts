@@ -1,5 +1,6 @@
 import type { AbilityName } from './abilityScores.js';
 import { abilityCheck, savingThrow } from './checks.js';
+import { SKILL_ABILITY } from './skills.js';
 import type { ResolveAttackResult } from './combat.js';
 import { resolveWeaponAttack, type Proficiencies as WeaponProficiencies, type Weapon } from './weapons.js';
 
@@ -38,6 +39,7 @@ export interface CharacterProficiencies {
   weapons?: WeaponProficiencies;
   saves?: AbilityName[];
   skills?: SkillName[];
+  expertise?: SkillName[];
 }
 
 export interface Character {
@@ -99,8 +101,59 @@ export function isProficientSave(character: Character, ability: AbilityName): bo
   return Boolean(character.proficiencies?.saves?.includes(ability));
 }
 
+export function skillAbility(skill: SkillName): AbilityName {
+  return SKILL_ABILITY[skill];
+}
+
 export function isProficientSkill(character: Character, skill: SkillName): boolean {
   return Boolean(character.proficiencies?.skills?.includes(skill));
+}
+
+export function hasExpertise(character: Character, skill: SkillName): boolean {
+  return Boolean(character.proficiencies?.expertise?.includes(skill));
+}
+
+export function characterSkillCheck(
+  character: Character,
+  skill: SkillName,
+  opts: {
+    dc?: number;
+    advantage?: boolean;
+    disadvantage?: boolean;
+    seed?: string;
+    extraMod?: number;
+  } = {},
+) {
+  const ability = skillAbility(skill);
+  const mods = abilityMods(character.abilities);
+  const base = mods[ability] ?? 0;
+  const proficiencyBonus = proficiencyBonusForLevel(character.level);
+  const proficient = isProficientSkill(character, skill);
+  const expertise = hasExpertise(character, skill);
+  const profBonus = proficient ? (expertise ? proficiencyBonus * 2 : proficiencyBonus) : 0;
+  const modifier = base + profBonus + (opts.extraMod ?? 0);
+
+  return abilityCheck({
+    ability,
+    modifier,
+    proficient: false,
+    proficiencyBonus: 0,
+    advantage: opts.advantage,
+    disadvantage: opts.disadvantage,
+    dc: opts.dc,
+    seed: opts.seed,
+  });
+}
+
+export function passivePerception(character: Character, extraMod = 0): number {
+  const skill = 'Perception' as const;
+  const mods = abilityMods(character.abilities);
+  const base = mods.WIS ?? 0;
+  const proficiencyBonus = proficiencyBonusForLevel(character.level);
+  const proficient = isProficientSkill(character, skill);
+  const expertise = hasExpertise(character, skill);
+  const profBonus = proficient ? (expertise ? proficiencyBonus * 2 : proficiencyBonus) : 0;
+  return 10 + base + profBonus + extraMod;
 }
 
 function resolveCharacterAbilityModifier(

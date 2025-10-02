@@ -43,9 +43,13 @@ export {
   abilityMods,
   isProficientSave,
   isProficientSkill,
+  skillAbility,
+  hasExpertise,
   characterAbilityCheck,
   characterSavingThrow,
+  characterSkillCheck,
   characterWeaponAttack,
+  passivePerception,
   setCharacterWeaponLookup,
 } from './character.js';
 export type {
@@ -54,3 +58,4 @@ export type {
   CharacterProficiencies,
   SkillName,
 } from './character.js';
+export { SKILL_ABILITY } from './skills.js';
