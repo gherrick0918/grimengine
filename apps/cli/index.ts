@@ -8,9 +8,15 @@ import {
   attackRoll,
   damageRoll,
   resolveAttack,
+  chooseAttackAbility,
+  resolveWeaponAttack,
   type AbilityName,
   type AttackRollResult,
+  type AbilityMods,
+  type Proficiencies,
+  type Weapon,
 } from '@grimengine/core';
+import { WEAPONS } from '@grimengine/rules-srd/weapons';
 
 function showUsage(): void {
   console.log('Usage:');
@@ -20,17 +26,31 @@ function showUsage(): void {
   console.log('  pnpm dev -- attack [--mod <+n|-n>] [--proficient] [--pb <n>] [--adv|--dis] [--ac <n>] [--seed <value>]');
   console.log('  pnpm dev -- damage "<expression>" [--crit] [--resist] [--vuln] [--seed <value>]');
   console.log(
-    '  pnpm dev -- resolve --dmg "<expression>" [--mod <+n|-n>] [--proficient] [--pb <n>] [--adv|--dis] [--ac <n>] [--seed <value>] [--crit] [--resist] [--vuln] [--dmg-seed <value>]'
+    '  pnpm dev -- resolve --dmg "<expression>" [--mod <+n|-n>] [--proficient] [--pb <n>] [--adv|--dis] [--ac <n>] [--seed <value>] [--crit] [--resist] [--vuln] [--dmg-seed <value>]' 
   );
   console.log('  pnpm dev -- abilities roll [--seed <value>] [--count <n>] [--drop <n>] [--sort asc|desc|none]');
   console.log('  pnpm dev -- abilities standard');
   console.log('  pnpm dev -- abilities pointbuy "<comma-separated scores>"');
+  console.log('  pnpm dev -- weapon list');
+  console.log('  pnpm dev -- weapon info "<name>"');
+  console.log(
+    '  pnpm dev -- weapon attack "<name>" [--str <n>] [--dex <n>] [--pb <n>] [--profs <simple|martial|comma list>] [--twohanded] [--adv|--dis] [--ac <n>] [--seed <value>]',
+  );
 }
 
 const ABILITY_NAMES: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
 
 function isAbilityName(value: string): value is AbilityName {
   return ABILITY_NAMES.includes(value as AbilityName);
+}
+
+const WEAPON_INDEX = new Map<string, Weapon>();
+WEAPONS.forEach((weapon) => {
+  WEAPON_INDEX.set(weapon.name.toLowerCase(), weapon);
+});
+
+function getWeaponByName(name: string): Weapon | undefined {
+  return WEAPON_INDEX.get(name.toLowerCase());
 }
 
 function parseModifier(value: string | undefined): number {
@@ -52,6 +72,281 @@ function parseModifier(value: string | undefined): number {
 
 function formatModifier(value: number): string {
   return value >= 0 ? `+${value}` : `${value}`;
+}
+
+function formatWeaponProperties(weapon: Weapon): string {
+  const properties = weapon.properties;
+  if (!properties) {
+    return 'none';
+  }
+
+  const parts: string[] = [];
+
+  if (properties.finesse) parts.push('finesse');
+  if (properties.light) parts.push('light');
+  if (properties.heavy) parts.push('heavy');
+  if (properties.reach) parts.push('reach');
+  if (properties.twoHanded) parts.push('two-handed');
+  if (properties.ammunition) parts.push('ammunition');
+  if (properties.loading) parts.push('loading');
+
+  if (properties.thrown) {
+    if (properties.thrown === true) {
+      parts.push('thrown');
+    } else {
+      const { normal, long } = properties.thrown;
+      const rangeLabel = long ? `${normal}/${long}` : `${normal}`;
+      parts.push(`thrown (${rangeLabel})`);
+    }
+  }
+
+  return parts.length > 0 ? parts.join(', ') : 'none';
+}
+
+function applyProficiencyList(value: string | undefined, proficiencies: Proficiencies): void {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error('Expected value after --profs.');
+  }
+
+  value
+    .split(/[,|]/)
+    .flatMap((segment) => segment.split(/\s+/))
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0)
+    .forEach((entry) => {
+      if (entry === 'simple' || entry === 'martial') {
+        proficiencies[entry] = true;
+      }
+    });
+}
+
+function handleWeaponListCommand(): void {
+  const names = [...WEAPONS].map((weapon) => weapon.name).sort((a, b) => a.localeCompare(b));
+  console.log('Available weapons:');
+  names.forEach((name) => console.log(`- ${name}`));
+  process.exit(0);
+}
+
+function handleWeaponInfoCommand(rawName: string): void {
+  const weapon = getWeaponByName(rawName);
+  if (!weapon) {
+    console.error(`Unknown weapon: ${rawName}`);
+    console.error('Use `pnpm dev -- weapon list` to see available options.');
+    process.exit(1);
+  }
+
+  console.log(weapon.name);
+  console.log(`Category: ${weapon.category}`);
+  console.log(`Type: ${weapon.type}`);
+  console.log(`Damage: ${weapon.damage.expression} ${weapon.damage.type}`);
+  if (weapon.versatile) {
+    console.log(`Versatile: ${weapon.versatile.expression}`);
+  }
+  if (weapon.range) {
+    const { normal, long } = weapon.range;
+    const rangeLabel = typeof long === 'number' ? `${normal}/${long}` : `${normal}`;
+    console.log(`Range: ${rangeLabel}`);
+  }
+  console.log(`Properties: ${formatWeaponProperties(weapon)}`);
+  process.exit(0);
+}
+
+function handleWeaponAttackCommand(weapon: Weapon, rawArgs: string[]): void {
+  const abilityMods: AbilityMods = {};
+  const proficiencies: Proficiencies = {};
+  let proficiencyBonus: number | undefined;
+  let twoHanded = false;
+  let advantage = false;
+  let disadvantage = false;
+  let targetAC: number | undefined;
+  let seed: string | undefined;
+
+  try {
+    for (let i = 0; i < rawArgs.length; i += 1) {
+      const arg = rawArgs[i];
+      const lower = arg.toLowerCase();
+
+      let handled = false;
+      for (const ability of ABILITY_NAMES) {
+        const flag = `--${ability.toLowerCase()}`;
+        if (lower === flag) {
+          abilityMods[ability] = parseSignedInteger(rawArgs[i + 1], flag);
+          i += 1;
+          handled = true;
+          break;
+        }
+        if (lower.startsWith(`${flag}=`)) {
+          abilityMods[ability] = parseSignedInteger(arg.slice(`${flag}=`.length), flag);
+          handled = true;
+          break;
+        }
+      }
+      if (handled) {
+        continue;
+      }
+
+      if (lower === '--twohanded' || lower === '--two-handed') {
+        twoHanded = true;
+        continue;
+      }
+
+      if (lower === '--adv' || lower === '--advantage') {
+        advantage = true;
+        continue;
+      }
+
+      if (lower === '--dis' || lower === '--disadvantage' || lower === '--disadv') {
+        disadvantage = true;
+        continue;
+      }
+
+      if (arg.startsWith('--pb=')) {
+        proficiencyBonus = parseSignedInteger(arg.slice('--pb='.length), '--pb');
+        continue;
+      }
+
+      if (lower === '--pb') {
+        proficiencyBonus = parseSignedInteger(rawArgs[i + 1], '--pb');
+        i += 1;
+        continue;
+      }
+
+      if (arg.startsWith('--ac=')) {
+        targetAC = parseSignedInteger(arg.slice('--ac='.length), '--ac');
+        continue;
+      }
+
+      if (lower === '--ac') {
+        targetAC = parseSignedInteger(rawArgs[i + 1], '--ac');
+        i += 1;
+        continue;
+      }
+
+      if (arg.startsWith('--seed=')) {
+        seed = arg.slice('--seed='.length);
+        continue;
+      }
+
+      if (lower === '--seed') {
+        if (i + 1 >= rawArgs.length) {
+          throw new Error('Expected value after --seed.');
+        }
+        seed = rawArgs[i + 1];
+        i += 1;
+        continue;
+      }
+
+      if (arg.startsWith('--profs=')) {
+        applyProficiencyList(arg.slice('--profs='.length), proficiencies);
+        continue;
+      }
+
+      if (lower === '--profs') {
+        applyProficiencyList(rawArgs[i + 1], proficiencies);
+        i += 1;
+        continue;
+      }
+
+      console.warn(`Ignoring unknown argument: ${arg}`);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  if (advantage && disadvantage) {
+    console.error('Cannot roll with both advantage and disadvantage.');
+    process.exit(1);
+  }
+
+  const ability = chooseAttackAbility(weapon, abilityMods);
+  const abilityMod = abilityMods[ability] ?? 0;
+  const result = resolveWeaponAttack({
+    weapon,
+    abilities: abilityMods,
+    proficiencies: Object.keys(proficiencies).length > 0 ? proficiencies : undefined,
+    proficiencyBonus,
+    twoHanded,
+    advantage,
+    disadvantage,
+    targetAC,
+    seed,
+  });
+
+  const proficient = Boolean(proficiencies[weapon.category]);
+  const pbUsed = proficient ? (Number.isFinite(proficiencyBonus) ? (proficiencyBonus as number) : 2) : 0;
+  const outcome = getAttackOutcome(result.attack);
+
+  console.log(`Weapon Attack: ${weapon.name}`);
+  console.log(`Ability used: ${ability} (${formatModifier(abilityMod)})`);
+  console.log(
+    `Proficiency: ${proficient ? 'yes' : 'no'}${proficient ? ` (PB ${formatModifier(pbUsed)})` : ''}`.trim(),
+  );
+  console.log(`Attack: ${result.attack.expression}`);
+  const rollsLine = `Rolls: [${result.attack.d20s.join(', ')}] → natural ${result.attack.natural} → total ${result.attack.total}`;
+  console.log(outcome ? `${rollsLine} → ${outcome}` : rollsLine);
+  if (outcome) {
+    console.log(`Result: ${outcome}`);
+  }
+
+  if (result.damage) {
+    console.log(`Damage: ${result.damage.expression}`);
+    const parts = [`Rolls: [${result.damage.rolls.join(', ')}]`];
+    if (result.damage.critRolls && result.damage.critRolls.length > 0) {
+      parts.push(`+ crit [${result.damage.critRolls.join(', ')}]`);
+    }
+    parts.push(`→ base ${result.damage.baseTotal}`);
+    parts.push(`→ final ${result.damage.finalTotal}`);
+    console.log(parts.join(' '));
+  } else {
+    console.log('Damage: not rolled');
+  }
+
+  process.exit(0);
+}
+
+function handleWeaponCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Missing weapon subcommand.');
+    showUsage();
+    process.exit(1);
+  }
+
+  const [subcommand, ...rest] = rawArgs;
+  if (subcommand === 'list') {
+    handleWeaponListCommand();
+    return;
+  }
+
+  if (subcommand === 'info') {
+    if (rest.length === 0) {
+      console.error('Missing weapon name for info command.');
+      process.exit(1);
+    }
+    handleWeaponInfoCommand(rest[0]);
+    return;
+  }
+
+  if (subcommand === 'attack') {
+    if (rest.length === 0) {
+      console.error('Missing weapon name for attack command.');
+      process.exit(1);
+    }
+    const [weaponName, ...attackArgs] = rest;
+    const weapon = getWeaponByName(weaponName);
+    if (!weapon) {
+      console.error(`Unknown weapon: ${weaponName}`);
+      console.error('Use `pnpm dev -- weapon list` to see available options.');
+      process.exit(1);
+    }
+    handleWeaponAttackCommand(weapon, attackArgs);
+    return;
+  }
+
+  console.error(`Unknown weapon subcommand: ${subcommand}`);
+  process.exit(1);
 }
 
 function handleCheckCommand(type: 'check' | 'save', rawArgs: string[]): void {
@@ -680,6 +975,10 @@ if (command === 'damage') {
 
 if (command === 'resolve') {
   handleResolveCommand(rest);
+}
+
+if (command === 'weapon') {
+  handleWeaponCommand(rest);
 }
 
 if (command === 'abilities') {
