@@ -25,6 +25,18 @@ import {
   hasExpertise,
   passivePerception,
   SKILL_ABILITY,
+  createEncounter,
+  addActor as addEncounterActor,
+  removeActor as removeEncounterActor,
+  rollInitiative as rollEncounterInitiative,
+  nextTurn as encounterNextTurn,
+  currentActor as encounterCurrentActor,
+  actorAttack as encounterActorAttack,
+  type EncounterState,
+  type Actor as EncounterActor,
+  type PlayerActor,
+  type MonsterActor,
+  type WeaponProfile,
   type AbilityName,
   type AttackRollResult,
   type AbilityMods,
@@ -34,6 +46,8 @@ import {
   type SkillName,
 } from '@grimengine/core';
 import { WEAPONS, getWeaponByName } from '@grimengine/rules-srd/weapons';
+import { getMonsterByName } from '@grimengine/rules-srd/monsters';
+import { clearEncounter, loadEncounter, saveEncounter } from './encounterSession';
 import { clearCharacter, loadCharacter, saveCharacter } from './session';
 
 function showUsage(): void {
@@ -62,6 +76,14 @@ function showUsage(): void {
   console.log('  pnpm dev -- character skills');
   console.log('  pnpm dev -- character attack "<name>" [--twohanded] [--ac <n>] [--adv|--dis] [--seed <value>]');
   console.log('  pnpm dev -- character unload');
+  console.log('  pnpm dev -- encounter start [--seed <value>]');
+  console.log('  pnpm dev -- encounter add pc "<name>"');
+  console.log('  pnpm dev -- encounter add monster "<name>" [--count <n>]');
+  console.log('  pnpm dev -- encounter list');
+  console.log('  pnpm dev -- encounter roll-init');
+  console.log('  pnpm dev -- encounter next');
+  console.log('  pnpm dev -- encounter attack "<attacker>" "<defender>" [--adv|--dis] [--twohanded] [--seed <value>]');
+  console.log('  pnpm dev -- encounter end');
 }
 
 const ABILITY_NAMES: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
@@ -77,6 +99,162 @@ function normalizeSkillName(raw: string): SkillName | undefined {
 }
 
 setCharacterWeaponLookup(getWeaponByName);
+
+function requireEncounterState(): EncounterState {
+  const encounter = loadEncounter();
+  if (!encounter) {
+    console.error('No encounter in progress. Use `pnpm dev -- encounter start` first.');
+    process.exit(1);
+  }
+  return encounter;
+}
+
+function slugifyId(value: string): string {
+  const cleaned = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return cleaned.length > 0 ? cleaned : 'actor';
+}
+
+function generateActorId(state: EncounterState, base: string): string {
+  const slug = slugifyId(base);
+  if (!state.actors[slug]) {
+    return slug;
+  }
+
+  let index = 2;
+  while (state.actors[`${slug}-${index}`]) {
+    index += 1;
+  }
+  return `${slug}-${index}`;
+}
+
+function formatDamageExpression(base: string, modifier: number): string {
+  if (modifier > 0) {
+    return `${base}+${modifier}`;
+  }
+  if (modifier < 0) {
+    return `${base}${modifier}`;
+  }
+  return base;
+}
+
+function cloneWeaponProfile(profile: WeaponProfile): WeaponProfile {
+  return { ...profile };
+}
+
+function cloneMonster(template: Omit<MonsterActor, 'id' | 'side'>, id: string, name: string): MonsterActor {
+  return {
+    ...template,
+    id,
+    name,
+    side: 'foe',
+    abilityMods: { ...template.abilityMods },
+    attacks: template.attacks.map((attack) => cloneWeaponProfile(attack)),
+  };
+}
+
+function formatHitPoints(actor: EncounterActor): string {
+  return `${actor.hp}/${actor.maxHp}`;
+}
+
+function findActorByIdentifier(state: EncounterState, identifier: string): EncounterActor {
+  const direct = state.actors[identifier];
+  if (direct) {
+    return direct;
+  }
+
+  const matches = Object.values(state.actors).filter(
+    (actor) => actor.name.toLowerCase() === identifier.toLowerCase(),
+  );
+
+  if (matches.length === 1) {
+    return matches[0];
+  }
+
+  if (matches.length === 0) {
+    throw new Error(`No actor matches "${identifier}".`);
+  }
+
+  throw new Error(`Multiple actors match "${identifier}". Use the actor id instead.`);
+}
+
+function sortActorsForListing(state: EncounterState): EncounterActor[] {
+  return Object.values(state.actors).sort((a, b) => {
+    if (a.side !== b.side) {
+      return a.side === 'party' ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function nextMonsterNumber(state: EncounterState, baseName: string): number {
+  const pattern = new RegExp(`^${baseName.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')} #([0-9]+)$`, 'i');
+  let highest = 0;
+  Object.values(state.actors).forEach((actor) => {
+    const match = actor.name.match(pattern);
+    if (match) {
+      const value = Number.parseInt(match[1], 10);
+      if (Number.isFinite(value) && value > highest) {
+        highest = value;
+      }
+    }
+  });
+  return highest + 1;
+}
+
+function formatActorLine(state: EncounterState, actor: EncounterActor, currentId: string | undefined): string {
+  const pointer = currentId === actor.id ? '→' : ' ';
+  const defeated = state.defeated.has(actor.id) ? ' [DEFEATED]' : '';
+  const initiative = state.order.find((entry) => entry.actorId === actor.id);
+  const initLabel = initiative ? ` init=${initiative.total} (roll ${initiative.rolled})` : '';
+  return `${pointer} [${actor.side}] ${actor.name} (id=${actor.id}) AC ${actor.ac} HP ${formatHitPoints(actor)}${defeated}${initLabel}`;
+}
+
+function buildPlayerActor(state: EncounterState, name: string, character: Character): PlayerActor {
+  const mods = abilityMods(character.abilities);
+  const pb = proficiencyBonusForLevel(character.level);
+  const dexMod = mods.DEX ?? 0;
+  const strMod = mods.STR ?? 0;
+  const id = generateActorId(state, name);
+
+  return {
+    id,
+    name,
+    side: 'party',
+    type: 'pc',
+    ac: 10 + dexMod,
+    hp: 12,
+    maxHp: 12,
+    abilityMods: mods,
+    proficiencyBonus: pb,
+    defaultWeapon: {
+      name: 'Unarmed',
+      attackMod: strMod + pb,
+      damageExpr: formatDamageExpression('1d4', strMod),
+    },
+  };
+}
+
+function addMonsters(
+  state: EncounterState,
+  template: Omit<MonsterActor, 'id' | 'side'>,
+  baseName: string,
+  count: number,
+): { state: EncounterState; added: MonsterActor[] } {
+  const added: MonsterActor[] = [];
+  let nextState = state;
+  let nextNumber = nextMonsterNumber(state, baseName);
+
+  for (let i = 0; i < count; i += 1) {
+    const name = `${baseName} #${nextNumber}`;
+    const id = generateActorId(nextState, name);
+    const actor = cloneMonster(template, id, name);
+    nextState = addEncounterActor(nextState, actor);
+    added.push(actor);
+    nextNumber += 1;
+  }
+
+  return { state: nextState, added };
+}
 
 function parseModifier(value: string | undefined): number {
   if (!value) {
@@ -728,6 +906,336 @@ function handleCharacterCommand(rawArgs: string[]): void {
   }
 
   console.error(`Unknown character subcommand: ${subcommand}`);
+  process.exit(1);
+}
+
+function handleEncounterStartCommand(rawArgs: string[]): void {
+  let seed: string | undefined;
+
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const arg = rawArgs[i];
+    if (arg.startsWith('--seed=')) {
+      seed = arg.slice('--seed='.length);
+      continue;
+    }
+    if (arg === '--seed') {
+      if (i + 1 >= rawArgs.length) {
+        console.error('Expected value after --seed.');
+        process.exit(1);
+      }
+      seed = rawArgs[i + 1];
+      i += 1;
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  const encounter = createEncounter(seed);
+  saveEncounter(encounter);
+  const seedLabel = seed ? ` (seed="${seed}")` : '';
+  console.log(`Encounter started${seedLabel}.`);
+  process.exit(0);
+}
+
+function handleEncounterAddPcCommand(name: string): void {
+  const encounter = requireEncounterState();
+  const character = requireLoadedCharacter();
+  const actor = buildPlayerActor(encounter, name, character);
+  const nextState = addEncounterActor(encounter, actor);
+  saveEncounter(nextState);
+  console.log(`Added PC ${actor.name} (id=${actor.id}).`);
+  process.exit(0);
+}
+
+function handleEncounterAddMonsterCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Missing monster name.');
+    process.exit(1);
+  }
+
+  const [name, ...rest] = rawArgs;
+  let count = 1;
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    if (arg.startsWith('--count=')) {
+      const value = Number.parseInt(arg.slice('--count='.length), 10);
+      if (!Number.isFinite(value) || value <= 0) {
+        console.error('--count must be a positive integer.');
+        process.exit(1);
+      }
+      count = value;
+      continue;
+    }
+    if (arg === '--count') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --count.');
+        process.exit(1);
+      }
+      const value = Number.parseInt(rest[i + 1], 10);
+      if (!Number.isFinite(value) || value <= 0) {
+        console.error('--count must be a positive integer.');
+        process.exit(1);
+      }
+      count = value;
+      i += 1;
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  const template = getMonsterByName(name);
+  if (!template) {
+    console.error(`Unknown monster: ${name}`);
+    process.exit(1);
+  }
+
+  const encounter = requireEncounterState();
+  const { state, added } = addMonsters(encounter, template, template.name, count);
+  saveEncounter(state);
+  const names = added.map((actor) => `${actor.name} (id=${actor.id})`).join(', ');
+  console.log(`Added ${added.length} ${template.name}${added.length === 1 ? '' : 's'}: ${names}`);
+  process.exit(0);
+}
+
+function handleEncounterAddCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error('Usage: pnpm dev -- encounter add <pc|monster> "<name>" [...]');
+    process.exit(1);
+  }
+
+  const [type, ...rest] = rawArgs;
+  if (type === 'pc') {
+    const name = rest[0];
+    if (!name) {
+      console.error('Missing PC name.');
+      process.exit(1);
+    }
+    handleEncounterAddPcCommand(name);
+    return;
+  }
+
+  if (type === 'monster') {
+    handleEncounterAddMonsterCommand(rest);
+    return;
+  }
+
+  console.error(`Unknown encounter add type: ${type}`);
+  process.exit(1);
+}
+
+function handleEncounterListCommand(): void {
+  const encounter = requireEncounterState();
+  const current = encounterCurrentActor(encounter);
+
+  console.log(`Encounter ${encounter.id}`);
+  const orderSize = encounter.order.length;
+  const turnLabel = orderSize > 0 ? `${encounter.turnIndex + 1}/${orderSize}` : 'n/a';
+  console.log(`Round: ${encounter.round} | Turn: ${turnLabel}`);
+  console.log('Actors:');
+  const sorted = sortActorsForListing(encounter);
+  sorted.forEach((actor) => {
+    console.log(formatActorLine(encounter, actor, current?.id));
+  });
+  process.exit(0);
+}
+
+function handleEncounterRollInitCommand(): void {
+  let encounter = requireEncounterState();
+  encounter = rollEncounterInitiative(encounter);
+  saveEncounter(encounter);
+
+  console.log('Initiative order:');
+  if (encounter.order.length === 0) {
+    console.log('(no actors)');
+  } else {
+    encounter.order.forEach((entry, index) => {
+      const actor = encounter.actors[entry.actorId];
+      const name = actor ? actor.name : entry.actorId;
+      const dex = actor?.abilityMods?.DEX ?? 0;
+      console.log(
+        `${index + 1}. ${name} (id=${entry.actorId}) → ${entry.total} = ${entry.rolled} + Dex ${formatModifier(dex)}`,
+      );
+    });
+  }
+
+  process.exit(0);
+}
+
+function handleEncounterNextCommand(): void {
+  let encounter = requireEncounterState();
+  encounter = encounterNextTurn(encounter);
+  saveEncounter(encounter);
+
+  if (encounter.order.length === 0) {
+    console.log('No initiative order set.');
+    process.exit(0);
+  }
+
+  const actor = encounterCurrentActor(encounter);
+  console.log(`Round ${encounter.round}, turn ${encounter.turnIndex + 1}.`);
+  if (actor) {
+    console.log(`Current actor: ${actor.name} (id=${actor.id})`);
+  } else {
+    console.log('No active actor on this turn.');
+  }
+  process.exit(0);
+}
+
+function handleEncounterAttackCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error('Usage: pnpm dev -- encounter attack "<attacker>" "<defender>" [--adv|--dis] [--twohanded] [--seed <value>]');
+    process.exit(1);
+  }
+
+  const [attackerRaw, defenderRaw, ...rest] = rawArgs;
+  let advantage = false;
+  let disadvantage = false;
+  let twoHanded = false;
+  let seed: string | undefined;
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    const lower = arg.toLowerCase();
+
+    if (lower === '--adv' || lower === '--advantage') {
+      advantage = true;
+      continue;
+    }
+    if (lower === '--dis' || lower === '--disadvantage' || lower === '--disadv') {
+      disadvantage = true;
+      continue;
+    }
+    if (lower === '--twohanded' || lower === '--two-handed') {
+      twoHanded = true;
+      continue;
+    }
+    if (arg.startsWith('--seed=')) {
+      seed = arg.slice('--seed='.length);
+      continue;
+    }
+    if (lower === '--seed') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --seed.');
+        process.exit(1);
+      }
+      seed = rest[i + 1];
+      i += 1;
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  if (advantage && disadvantage) {
+    console.error('Cannot roll with both advantage and disadvantage.');
+    process.exit(1);
+  }
+
+  let encounter = requireEncounterState();
+  let attacker: EncounterActor;
+  let defender: EncounterActor;
+
+  try {
+    attacker = findActorByIdentifier(encounter, attackerRaw);
+    defender = findActorByIdentifier(encounter, defenderRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  const result = encounterActorAttack(encounter, attacker.id, defender.id, {
+    advantage,
+    disadvantage,
+    twoHanded,
+    seed,
+  });
+
+  encounter = result.state;
+  saveEncounter(encounter);
+
+  const outcome = getAttackOutcome(result.attack);
+  console.log(`Attack: ${result.attack.expression}`);
+  const rollsLine = `Rolls: [${result.attack.d20s.join(', ')}] → natural ${result.attack.natural} → total ${result.attack.total}`;
+  console.log(outcome ? `${rollsLine} → ${outcome}` : rollsLine);
+
+  if (result.damage) {
+    console.log(`Damage: ${result.damage.expression}`);
+    const parts = [`Rolls: [${result.damage.rolls.join(', ')}]`];
+    if (result.damage.critRolls && result.damage.critRolls.length > 0) {
+      parts.push(`+ crit [${result.damage.critRolls.join(', ')}]`);
+    }
+    parts.push(`→ base ${result.damage.baseTotal}`);
+    parts.push(`→ final ${result.damage.finalTotal}`);
+    console.log(parts.join(' '));
+  }
+
+  const updatedDefender = encounter.actors[defender.id];
+  if (updatedDefender) {
+    const status = encounter.defeated.has(defender.id) ? 'DEFEATED' : 'active';
+    console.log(
+      `Defender ${updatedDefender.name} (id=${updatedDefender.id}) now has ${formatHitPoints(updatedDefender)} HP (${status}).`,
+    );
+  }
+
+  process.exit(0);
+}
+
+function handleEncounterEndCommand(): void {
+  clearEncounter();
+  console.log('Encounter ended.');
+  process.exit(0);
+}
+
+function handleEncounterCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Missing encounter subcommand.');
+    showUsage();
+    process.exit(1);
+  }
+
+  const [subcommand, ...rest] = rawArgs;
+
+  if (subcommand === 'start') {
+    handleEncounterStartCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'add') {
+    handleEncounterAddCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'list') {
+    handleEncounterListCommand();
+    return;
+  }
+
+  if (subcommand === 'roll-init') {
+    handleEncounterRollInitCommand();
+    return;
+  }
+
+  if (subcommand === 'next') {
+    handleEncounterNextCommand();
+    return;
+  }
+
+  if (subcommand === 'attack') {
+    handleEncounterAttackCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'end') {
+    handleEncounterEndCommand();
+    return;
+  }
+
+  console.error(`Unknown encounter subcommand: ${subcommand}`);
   process.exit(1);
 }
 
@@ -1591,6 +2099,10 @@ if (command === 'roll') {
 
 if (command === 'character') {
   handleCharacterCommand(rest);
+}
+
+if (command === 'encounter') {
+  handleEncounterCommand(rest);
 }
 
 if (command === 'check' || command === 'save') {

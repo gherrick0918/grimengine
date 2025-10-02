@@ -59,3 +59,22 @@ export type {
   SkillName,
 } from './character.js';
 export { SKILL_ABILITY } from './skills.js';
+export {
+  createEncounter,
+  addActor,
+  removeActor,
+  rollInitiative,
+  nextTurn,
+  currentActor,
+  actorAttack,
+} from './encounter.js';
+export type {
+  EncounterState,
+  Actor,
+  ActorBase,
+  MonsterActor,
+  PlayerActor,
+  InitiativeEntry,
+  WeaponProfile,
+  Side,
+} from './encounter.js';
