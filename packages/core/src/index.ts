@@ -13,3 +13,5 @@ export type {
   AbilityRollOptions,
   PointBuyOptions,
 } from './abilityScores.js';
+export { abilityCheck, savingThrow } from './checks.js';
+export type { CheckOptions, CheckResult } from './checks.js';
