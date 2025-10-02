@@ -1,0 +1,190 @@
+PS C:\dev\grimengine> pnpm test
+
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+ WARNING  stale pid file at "C:\\Users\\gherr\\AppData\\Local\\Temp\\turbod\\43a4cf7aca0adda0\\turbod.pid"
+• Packages in scope: @grimengine/core, @grimengine/rules-srd
+• Running test in 2 packages
+• Remote caching disabled
+@grimengine/core:test: cache hit, replaying logs 0697b7a4c34a76ad
+@grimengine/core:test: 
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest
+@grimengine/core:test: 
+@grimengine/core:test: 
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test: 
+@grimengine/core:test:  ✓ tests/weapons.test.ts (6 tests) 9ms
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 8ms
+@grimengine/core:test:  ✓ tests/combat.test.ts (8 tests) 12ms
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 11ms
+@grimengine/core:test:  ✓ tests/checks.test.ts (5 tests) 10ms
+@grimengine/core:test:
+@grimengine/core:test:  Test Files  5 passed (5)
+@grimengine/core:test:       Tests  32 passed (32)
+@grimengine/core:test:    Start at  12:34:59
+@grimengine/core:test:    Duration  1.21s (transform 1.93s, setup 0ms, collect 2.15s, tests 50ms, environment 1ms, prepare 1.60s)
+@grimengine/core:test:
+
+ Tasks:    1 successful, 1 total
+Cached:    1 cached, 1 total
+  Time:    410ms >>> FULL TURBO
+
+PS C:\dev\grimengine> pnpm dev -- weapon list                                                                                                        
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "list"
+
+Available weapons:
+- Dagger
+- Greatsword
+- Handaxe
+- Longbow
+- Longsword
+- Mace
+- Rapier
+PS C:\dev\grimengine> pnpm dev -- weapon info "Longsword"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "info" "Longsword"
+
+Longsword
+Category: martial
+Type: melee
+Damage: 1d8+0 slashing
+Versatile: 1d10+0
+Properties: none
+PS C:\dev\grimengine> pnpm dev -- weapon attack Longsword
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "attack" "Longsword"
+
+Weapon Attack: Longsword
+Ability used: STR (+0)
+Proficiency: no
+Attack: 1d20
+Rolls: [15] → natural 15 → total 15
+Damage: 1d8+0
+Rolls: [4] → base 4 → final 4
+PS C:\dev\grimengine> pnpm dev -- weapon attack Longsword --twohanded
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "attack" "Longsword" "--twohanded"
+
+Weapon Attack: Longsword
+Ability used: STR (+0)
+Proficiency: no
+Attack: 1d20
+Rolls: [19] → natural 19 → total 19
+Damage: 1d10+0
+Rolls: [1] → base 1 → final 1
+PS C:\dev\grimengine> pnpm dev -- weapon attack Longsword --twohanded
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "attack" "Longsword" "--twohanded"
+
+Weapon Attack: Longsword
+Ability used: STR (+0)
+Proficiency: no
+Attack: 1d20
+Rolls: [18] → natural 18 → total 18
+Damage: 1d10+0
+Rolls: [10] → base 10 → final 10
+PS C:\dev\grimengine> pnpm dev -- weapon attack Longsword --twohanded --seed
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "attack" "Longsword" "--twohanded" "--seed"
+
+Expected value after --seed.
+ ELIFECYCLE  Command failed with exit code 1.
+PS C:\dev\grimengine> pnpm dev -- weapon attack Longsword --twohanded --seed 15
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "attack" "Longsword" "--twohanded" "--seed" "15"
+
+Weapon Attack: Longsword
+Ability used: STR (+0)
+Proficiency: no
+Attack: 1d20
+Rolls: [8] → natural 8 → total 8
+Damage: 1d10+0
+Rolls: [4] → base 4 → final 4
+PS C:\dev\grimengine> pnpm dev -- weapon attack Longsword --twohanded --seed 15
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "attack" "Longsword" "--twohanded" "--seed" "15"
+
+Weapon Attack: Longsword
+Ability used: STR (+0)
+Proficiency: no
+Attack: 1d20
+Rolls: [8] → natural 8 → total 8
+Damage: 1d10+0
+Rolls: [4] → base 4 → final 4
+PS C:\dev\grimengine> pnpm dev -- weapon attack Longsword --twohanded --seed 1587
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "attack" "Longsword" "--twohanded" "--seed" "1587"
+
+Weapon Attack: Longsword
+Ability used: STR (+0)
+Proficiency: no
+Attack: 1d20
+Rolls: [16] → natural 16 → total 16
+Damage: 1d10+0
+Rolls: [8] → base 8 → final 8
+PS C:\dev\grimengine> pnpm dev -- weapon attack "Longsword" --str 3 --dex 1 --pb 2 --profs martial --twohanded --ac 15 --adv
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "attack" "Longsword" "--str" "3" "--dex" "1" "--pb" "2" "--profs" "martial" "--twohanded" "--ac" "15" "--adv"       
+
+Weapon Attack: Longsword
+Ability used: STR (+3)
+Proficiency: yes (PB +2)
+Attack: 1d20+5 adv vs AC 15
+Rolls: [11, 1] → natural 11 → total 16 → HIT
+Result: HIT
+Damage: 1d10+3
+Rolls: [1] → base 4 → final 4
+PS C:\dev\grimengine> pnpm dev -- weapon attack "Longsword" --str 3 --dex 1 --pb 2 --profs martial --twohanded --ac 15 --adv
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "attack" "Longsword" "--str" "3" "--dex" "1" "--pb" "2" "--profs" "martial" "--twohanded" "--ac" "15" "--adv"       
+
+Weapon Attack: Longsword
+Ability used: STR (+3)
+Proficiency: yes (PB +2)
+Attack: 1d20+5 adv vs AC 15
+Rolls: [7, 9] → natural 9 → total 14 → MISS
+Result: MISS
+Damage: not rolled
+PS C:\dev\grimengine> pnpm dev -- weapon attack "Longsword" --str 3 --dex 1 --pb 2 --profs martial --twohanded --ac 15 --adv
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "attack" "Longsword" "--str" "3" "--dex" "1" "--pb" "2" "--profs" "martial" "--twohanded" "--ac" "15" "--adv"       
+
+Weapon Attack: Longsword
+Ability used: STR (+3)
+Proficiency: yes (PB +2)
+Attack: 1d20+5 adv vs AC 15
+Rolls: [12, 10] → natural 12 → total 17 → HIT
+Result: HIT
+Damage: 1d10+3
+Rolls: [8] → base 11 → final 11
+PS C:\dev\grimengine> pnpm dev -- weapon attack "Longsword" --str 3 --dex 1 --pb 2 --profs martial --twohanded --ac 15 --adv
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "weapon" "attack" "Longsword" "--str" "3" "--dex" "1" "--pb" "2" "--profs" "martial" "--twohanded" "--ac" "15" "--adv"       
+
+Weapon Attack: Longsword
+Ability used: STR (+3)
+Proficiency: yes (PB +2)
+Attack: 1d20+5 adv vs AC 15
+Rolls: [19, 5] → natural 19 → total 24 → HIT
+Result: HIT
+Damage: 1d10+3
+Rolls: [8] → base 11 → final 11
+PS C:\dev\grimengine> 

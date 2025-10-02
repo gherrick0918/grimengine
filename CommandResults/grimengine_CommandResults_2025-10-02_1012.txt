@@ -1,0 +1,72 @@
+PS C:\dev\grimengine> pnpm test
+
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/core
+• Running test in 1 packages
+• Remote caching disabled
+@grimengine/core:test: cache hit (outputs already on disk), replaying logs 574e14d4977131ca
+@grimengine/core:test: 
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest
+@grimengine/core:test:
+@grimengine/core:test:
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test:
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 8ms
+@grimengine/core:test:  ✓ tests/combat.test.ts (8 tests) 8ms
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 11ms
+@grimengine/core:test:  ✓ tests/checks.test.ts (5 tests) 8ms
+@grimengine/core:test:
+@grimengine/core:test:  Test Files  4 passed (4)
+@grimengine/core:test:       Tests  26 passed (26)
+@grimengine/core:test:    Start at  10:08:29
+@grimengine/core:test:    Duration  726ms (transform 350ms, setup 0ms, collect 500ms, tests 34ms, environment 1ms, prepare 917ms)
+@grimengine/core:test:
+
+ Tasks:    1 successful, 1 total
+Cached:    1 cached, 1 total
+  Time:    219ms >>> FULL TURBO
+
+PS C:\dev\grimengine> pnpm dev -- attack --mod +7 --pb 2 --proficient --adv --ac 15                                                                  
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "attack" "--mod" "+7" "--pb" "2" "--proficient" "--adv" "--ac" "15"
+
+Attack: 1d20+9 adv vs AC 15
+Rolls: [14, 13] → natural 14 → total 23 → HIT
+Result: HIT
+PS C:\dev\grimengine> pnpm dev -- damage "1d8+3" --crit
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "damage" "1d8+3" "--crit"
+
+Damage: 1d8+3 (crit)
+Rolls: [5] + crit [4] → base 12 → final 12
+PS C:\dev\grimengine> pnpm dev -- damage "2d6+4" --resist
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "damage" "2d6+4" "--resist"
+
+Damage: 2d6+4 (resist)
+Rolls: [5, 2] → base 11 → final 5
+PS C:\dev\grimengine> pnpm dev -- damage "1d10+2" --vuln
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "damage" "1d10+2" "--vuln"
+
+Damage: 1d10+2 (vuln)
+Rolls: [5] → base 7 → final 14
+PS C:\dev\grimengine> pnpm dev -- resolve --mod +5 --ac 14 --dmg "1d8+3" --adv
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "resolve" "--mod" "+5" "--ac" "14" "--dmg" "1d8+3" "--adv"
+
+Attack: 1d20+5 adv vs AC 14
+Rolls: [9, 8] → natural 9 → total 14 → HIT
+Damage: 1d8+3
+Rolls: [5] → base 8 → final 8
+PS C:\dev\grimengine> 

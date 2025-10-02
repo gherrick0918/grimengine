@@ -1,0 +1,82 @@
+PS C:\dev\grimengine> pnp                                                                                                                            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      pnpm test
+
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/core
+• Running test in 1 packages
+• Remote caching disabled
+@grimengine/core:test: cache miss, executing 1ac5f11ba29801d1
+@grimengine/core:test: 
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest
+@grimengine/core:test:
+@grimengine/core:test: 
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test:
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 8ms
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 11ms
+@grimengine/core:test: 
+@grimengine/core:test:  Test Files  2 passed (2)
+@grimengine/core:test:       Tests  13 passed (13)
+@grimengine/core:test:    Start at  08:51:45
+@grimengine/core:test:    Duration  1.25s (transform 944ms, setup 0ms, collect 992ms, tests 19ms, environment 1ms, prepare 515ms)
+@grimengine/core:test:
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    3.359s
+
+PS C:\dev\grimengine> pnpm dev -- abilities roll                                                                                                     
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "abilities" "roll"
+
+Ability Scores (4d6 drop lowest, seed=none, sort=none)
+Sets: [14, 12, 13, 15, 16, 15]
+Details per stat: [[3,5,1,6] -> 14, [1,6,3,3] -> 12, [5,5,2,3] -> 13, [6,5,4,2] -> 15, [6,6,2,4] -> 16, [6,3,4,5] -> 15]
+PS C:\dev\grimengine> pnpm dev -- abilities standard
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "abilities" "standard"
+
+Standard Array: [15, 14, 13, 12, 10, 8]
+PS C:\dev\grimengine> pnpm dev -- abilities pointbuy "15,14,13,12,10,8"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "abilities" "pointbuy" "15,14,13,12,10,8"
+
+Point Buy: OK (cost 27 / budget 27)
+PS C:\dev\grimengine> pnpm dev -- abilities pointbuy "15,14,13,12,10,15"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "abilities" "pointbuy" "15,14,13,12,10,15"
+
+Point Buy: INVALID
+- Total cost 36 exceeds budget 27
+ ELIFECYCLE  Command failed with exit code 1.
+PS C:\dev\grimengine> 
