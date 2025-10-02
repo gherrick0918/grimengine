@@ -51,3 +51,12 @@ export const WEAPONS: Weapon[] = [
     range: { normal: 150, long: 600 },
   },
 ];
+
+const WEAPON_LOOKUP = new Map<string, Weapon>();
+WEAPONS.forEach((weapon) => {
+  WEAPON_LOOKUP.set(weapon.name.toLowerCase(), weapon);
+});
+
+export function getWeaponByName(name: string): Weapon | undefined {
+  return WEAPON_LOOKUP.get(name.toLowerCase());
+}

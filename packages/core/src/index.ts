@@ -37,3 +37,20 @@ export type {
   Proficiencies,
   WeaponAttackInput,
 } from './weapons.js';
+export {
+  abilityMod,
+  proficiencyBonusForLevel,
+  abilityMods,
+  isProficientSave,
+  isProficientSkill,
+  characterAbilityCheck,
+  characterSavingThrow,
+  characterWeaponAttack,
+  setCharacterWeaponLookup,
+} from './character.js';
+export type {
+  Character,
+  CharacterAbilityScores,
+  CharacterProficiencies,
+  SkillName,
+} from './character.js';
