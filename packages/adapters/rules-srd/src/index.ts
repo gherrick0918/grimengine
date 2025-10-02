@@ -1,1 +1,1 @@
-export { WEAPONS } from './weapons.js';
+export { WEAPONS, getWeaponByName } from './weapons.js';

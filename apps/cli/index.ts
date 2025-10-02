@@ -61,7 +61,7 @@ function isAbilityName(value: string): value is AbilityName {
 
 setCharacterWeaponLookup(getWeaponByName);
 
-let loadedCharacter: Character | undefined;
+let CURRENT_CHARACTER: Character | null = null;
 
 function parseModifier(value: string | undefined): number {
   if (!value) {
@@ -114,11 +114,11 @@ function formatWeaponProperties(weapon: Weapon): string {
 }
 
 function requireLoadedCharacter(): Character {
-  if (!loadedCharacter) {
+  if (!CURRENT_CHARACTER) {
     console.error('No character loaded. Use `pnpm dev -- character load "<path.json>"` first.');
     process.exit(1);
   }
-  return loadedCharacter;
+  return CURRENT_CHARACTER;
 }
 
 function handleCharacterLoadCommand(path: string | undefined): void {
@@ -159,7 +159,7 @@ function handleCharacterLoadCommand(path: string | undefined): void {
     };
 
     const pb = proficiencyBonusForLevel(character.level);
-    loadedCharacter = character;
+    CURRENT_CHARACTER = character;
     console.log(`Loaded character ${character.name} (lvl ${character.level}). PB ${formatModifier(pb)}`);
     process.exit(0);
   } catch (error) {
