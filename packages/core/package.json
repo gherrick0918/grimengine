@@ -1,0 +1,14 @@
+{
+  "name": "@grimengine/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./dice": "./src/dice.ts"
+  },
+  "scripts": {
+    "test": "vitest"
+  }
+}
