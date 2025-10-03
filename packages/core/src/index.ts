@@ -25,6 +25,14 @@ export type {
   ResolveAttackResult,
 } from './combat.js';
 export {
+  addCondition,
+  removeCondition,
+  hasCondition,
+  combineAdvantage,
+  attackAdvFromConditions,
+} from './conditions.js';
+export type { Condition, ConditionSet } from './conditions.js';
+export {
   chooseAttackAbility,
   resolveWeaponAttack,
 } from './weapons.js';
@@ -72,6 +80,8 @@ export {
   nextTurn,
   currentActor,
   actorAttack,
+  setCondition,
+  clearCondition,
   recordLoot,
   recordXP,
 } from './encounter.js';

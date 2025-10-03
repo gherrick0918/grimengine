@@ -1,4 +1,6 @@
 import type { AbilityName } from './abilityScores.js';
+import type { Condition, ConditionSet } from './conditions.js';
+import { addCondition, attackAdvFromConditions, combineAdvantage, removeCondition } from './conditions.js';
 import type { ResolveAttackResult } from './combat.js';
 import { resolveAttack } from './combat.js';
 import { roll } from './dice.js';
@@ -15,6 +17,7 @@ export interface ActorBase {
   maxHp: number;
   abilityMods: Partial<Record<AbilityName, number>>;
   proficiencyBonus?: number;
+  conditions?: ConditionSet;
 }
 
 export interface WeaponProfile {
@@ -300,11 +303,37 @@ function applyDamage(state: EncounterState, defenderId: string, amount: number):
   return { ...state, actors, defeated };
 }
 
+export function setCondition(state: EncounterState, actorId: string, cond: Condition): EncounterState {
+  const actor = state.actors[actorId];
+  if (!actor) {
+    return state;
+  }
+
+  const updated: Actor = { ...actor, conditions: addCondition(actor.conditions, cond) };
+  return { ...state, actors: { ...state.actors, [actorId]: updated } };
+}
+
+export function clearCondition(state: EncounterState, actorId: string, cond: Condition): EncounterState {
+  const actor = state.actors[actorId];
+  if (!actor) {
+    return state;
+  }
+
+  const updated: Actor = { ...actor, conditions: removeCondition(actor.conditions, cond) };
+  return { ...state, actors: { ...state.actors, [actorId]: updated } };
+}
+
 export function actorAttack(
   state: EncounterState,
   attackerId: string,
   defenderId: string,
-  opts?: { twoHanded?: boolean; advantage?: boolean; disadvantage?: boolean; seed?: string },
+  opts?: {
+    mode?: 'melee' | 'ranged';
+    twoHanded?: boolean;
+    advantage?: boolean;
+    disadvantage?: boolean;
+    seed?: string;
+  },
 ): { state: EncounterState; attack: ResolveAttackResult['attack']; damage?: ResolveAttackResult['damage']; defenderHp: number } {
   const attacker = state.actors[attackerId];
   const defender = state.actors[defenderId];
@@ -321,11 +350,18 @@ export function actorAttack(
   const attackSeed = baseSeed ? `${baseSeed}:attack:${attackerId}->${defenderId}` : undefined;
   const damageSeed = attackSeed ? `${attackSeed}:damage` : undefined;
 
+  const mode = opts?.mode ?? 'melee';
+  const conditionFlags = attackAdvFromConditions(attacker.conditions, defender.conditions, mode);
+  const combinedFlags = combineAdvantage(
+    { advantage: opts?.advantage, disadvantage: opts?.disadvantage },
+    conditionFlags,
+  );
+
   const attackResult = resolveAttack({
     abilityMod: attackMod,
     proficient: false,
-    advantage: opts?.advantage,
-    disadvantage: opts?.disadvantage,
+    advantage: combinedFlags.advantage,
+    disadvantage: combinedFlags.disadvantage,
     seed: attackSeed,
     targetAC: defender.ac,
     damage: {
