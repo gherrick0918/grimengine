@@ -59,6 +59,7 @@ import {
   readCachedMonster,
 } from '@grimengine/dnd5e-api/monsters.js';
 import { clearEncounter, loadEncounter, saveEncounter } from './encounterSession';
+import { deleteEncounterByName, listEncounterSaves, loadEncounterByName, saveEncounterAs } from './enc-session';
 import { clearCharacter, loadCharacter, saveCharacter } from './session';
 import { listVaultNames, loadFromVault, saveToVault } from './char-vault';
 
@@ -101,6 +102,10 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter add pc "<name>"');
   console.log('  pnpm dev -- encounter add monster "<name>" [--count <n>]');
   console.log('  pnpm dev -- encounter list');
+  console.log('  pnpm dev -- encounter save "<name>"');
+  console.log('  pnpm dev -- encounter list-saves');
+  console.log('  pnpm dev -- encounter load "<name>"');
+  console.log('  pnpm dev -- encounter delete "<name>"');
   console.log('  pnpm dev -- encounter roll-init');
   console.log('  pnpm dev -- encounter next');
   console.log('  pnpm dev -- encounter attack "<attacker>" "<defender>" [--adv|--dis] [--twohanded] [--seed <value>]');
@@ -1553,6 +1558,88 @@ function handleEncounterNextCommand(): void {
   process.exit(0);
 }
 
+function handleEncounterSaveCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- encounter save "<name>"');
+    process.exit(1);
+  }
+
+  const name = rawArgs.join(' ').trim();
+  if (!name) {
+    console.error('Encounter save name is required.');
+    process.exit(1);
+  }
+
+  const encounter = loadEncounter();
+  if (!encounter) {
+    console.error('No encounter in progress. Use `pnpm dev -- encounter start` first.');
+    process.exit(1);
+  }
+
+  saveEncounterAs(name, encounter);
+  console.log(`Saved encounter as "${name}".`);
+  process.exit(0);
+}
+
+function handleEncounterListSavesCommand(): void {
+  const saves = listEncounterSaves();
+  if (saves.length === 0) {
+    console.log('No saved encounters.');
+    process.exit(0);
+  }
+
+  console.log('Saved encounters:');
+  saves.forEach((save) => {
+    console.log(`- ${save}`);
+  });
+  process.exit(0);
+}
+
+function handleEncounterLoadCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- encounter load "<name>"');
+    process.exit(1);
+  }
+
+  const name = rawArgs.join(' ').trim();
+  if (!name) {
+    console.error('Encounter load name is required.');
+    process.exit(1);
+  }
+
+  const encounter = loadEncounterByName(name);
+  if (!encounter) {
+    console.error(`No saved encounter named "${name}".`);
+    process.exit(1);
+  }
+
+  saveEncounter(encounter);
+  console.log(`Loaded encounter "${name}" into session.`);
+  process.exit(0);
+}
+
+function handleEncounterDeleteCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- encounter delete "<name>"');
+    process.exit(1);
+  }
+
+  const name = rawArgs.join(' ').trim();
+  if (!name) {
+    console.error('Encounter delete name is required.');
+    process.exit(1);
+  }
+
+  const removed = deleteEncounterByName(name);
+  if (!removed) {
+    console.error(`No saved encounter named "${name}".`);
+    process.exit(1);
+  }
+
+  console.log(`Deleted saved encounter "${name}".`);
+  process.exit(0);
+}
+
 function handleEncounterAttackCommand(rawArgs: string[]): void {
   if (rawArgs.length < 2) {
     console.error('Usage: pnpm dev -- encounter attack "<attacker>" "<defender>" [--adv|--dis] [--twohanded] [--seed <value>]');
@@ -1681,6 +1768,26 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'list') {
     handleEncounterListCommand();
+    return;
+  }
+
+  if (subcommand === 'save') {
+    handleEncounterSaveCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'list-saves') {
+    handleEncounterListSavesCommand();
+    return;
+  }
+
+  if (subcommand === 'load') {
+    handleEncounterLoadCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'delete') {
+    handleEncounterDeleteCommand(rest);
     return;
   }
 
