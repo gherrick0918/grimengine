@@ -1,0 +1,114 @@
+PS C:\dev\grimengine> pnpm test
+
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/core, @grimengine/rules-srd
+• Running test in 2 packages
+• Remote caching disabled
+@grimengine/core:test: cache miss, executing b48b63e25dfee69f
+@grimengine/core:test: 
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest
+@grimengine/core:test:
+@grimengine/core:test: 
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test:
+@grimengine/core:test:  ✓ tests/checks.test.ts (5 tests) 10ms
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 11ms
+@grimengine/core:test:  ✓ tests/weapons.test.ts (6 tests) 11ms
+@grimengine/core:test:  ✓ tests/encounter.test.ts (3 tests) 13ms
+@grimengine/core:test:  ✓ tests/combat.test.ts (8 tests) 12ms
+@grimengine/core:test:  ✓ tests/skills.test.ts (4 tests) 12ms
+@grimengine/core:test:  ✓ tests/character.test.ts (6 tests) 15ms
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 5ms
+@grimengine/core:test: 
+@grimengine/core:test:  Test Files  8 passed (8)
+@grimengine/core:test:       Tests  45 passed (45)
+@grimengine/core:test:    Start at  16:21:31
+@grimengine/core:test:    Duration  1.58s (transform 1.16s, setup 0ms, collect 2.15s, tests 90ms, environment 2ms, prepare 2.41s)
+@grimengine/core:test:
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    3.043s
+
+PS C:\dev\grimengine> pnpm dev -- encounter start --seed grim                                                                                        
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "start" "--seed" "grim"
+
+Encounter started (seed="grim").
+PS C:\dev\grimengine> pnpm dev -- character load ".\Characters\Aerin.json"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "load" ".\\Characters\\Aerin.json"
+
+Loaded character Aerin (lvl 3). PB +2
+PS C:\dev\grimengine> pnpm dev -- encounter add pc "Aerin"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "pc" "Aerin"
+
+Added PC Aerin (id=aerin).
+PS C:\dev\grimengine> pnpm dev -- encounter add monster "Goblin" --count 2
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "monster" "Goblin" "--count" "2"
+
+Added 2 Goblins: Goblin #1 (id=goblin-1), Goblin #2 (id=goblin-2)
+PS C:\dev\grimengine> pnpm dev -- encounter roll-init
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "roll-init"
+
+Initiative order:
+1. Aerin (id=aerin) → 11 = 9 + Dex +2
+2. Goblin #1 (id=goblin-1) → 5 = 3 + Dex +2
+3. Goblin #2 (id=goblin-2) → 4 = 2 + Dex +2
+PS C:\dev\grimengine> pnpm dev -- encounter list
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "list"
+
+Encounter encounter-grim
+Round: 1 | Turn: 1/3
+Actors:
+→ [party] Aerin (id=aerin) AC 12 HP 12/12 init=11 (roll 9)
+  [foe] Goblin #1 (id=goblin-1) AC 15 HP 7/7 init=5 (roll 3)
+  [foe] Goblin #2 (id=goblin-2) AC 15 HP 7/7 init=4 (roll 2)
+PS C:\dev\grimengine> pnpm dev -- encounter next
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "next"
+
+Round 1, turn 2.
+Current actor: Goblin #1 (id=goblin-1)
+PS C:\dev\grimengine> pnpm dev -- encounter attack "Goblin #1" "Aerin" --seed grim
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "attack" "Goblin #1" "Aerin" "--seed" "grim"
+
+Attack: 1d20+4 vs AC 12
+Rolls: [7] → natural 7 → total 11 → MISS
+Defender Aerin (id=aerin) now has 12/12 HP (active).
+PS C:\dev\grimengine> pnpm dev -- encounter list
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "list"
+
+Encounter encounter-grim
+Round: 1 | Turn: 2/3
+Actors:
+  [party] Aerin (id=aerin) AC 12 HP 12/12 init=11 (roll 9)
+→ [foe] Goblin #1 (id=goblin-1) AC 15 HP 7/7 init=5 (roll 3)
+  [foe] Goblin #2 (id=goblin-2) AC 15 HP 7/7 init=4 (roll 2)
+PS C:\dev\grimengine> pnpm dev -- encounter end
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "end"
+
+Encounter ended.
+PS C:\dev\grimengine> 

@@ -1,0 +1,139 @@
+PS C:\dev\grimengine> pn
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      pnpm test
+
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/core, @grimengine/rules-srd
+• Running test in 2 packages
+• Remote caching disabled
+@grimengine/core:test: cache hit (outputs already on disk), replaying logs 03aa1d656ef9beeb
+@grimengine/core:test: 
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest
+@grimengine/core:test:
+@grimengine/core:test:
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test:
+@grimengine/core:test:  ✓ tests/weapons.test.ts (6 tests) 12ms
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 14ms
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 10ms
+@grimengine/core:test:  ✓ tests/combat.test.ts (8 tests) 15ms
+@grimengine/core:test:  ✓ tests/checks.test.ts (5 tests) 11ms
+@grimengine/core:test:  ✓ tests/character.test.ts (6 tests) 28ms
+@grimengine/core:test:
+@grimengine/core:test:  Test Files  6 passed (6)
+@grimengine/core:test:       Tests  38 passed (38)
+@grimengine/core:test:    Start at  13:13:12
+@grimengine/core:test:    Duration  1.79s (transform 1.01s, setup 0ms, collect 1.61s, tests 91ms, environment 3ms, prepare 3.89s)
+@grimengine/core:test:
+
+ Tasks:    1 successful, 1 total
+Cached:    1 cached, 1 total
+  Time:    204ms >>> FULL TURBO
+
+PS C:\dev\grimengine> pnpm dev -- character load ".\Characters\Aerin.json"                                                                           
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "load" ".\\Characters\\Aerin.json"
+
+Loaded character Aerin (lvl 3). PB +2
+PS C:\dev\grimengine> pnpm dev -- character show
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "show"
+
+Aerin (level 3)
+Proficiency Bonus: +2
+Ability Scores:
+  STR: 16 (+3)
+  DEX: 14 (+2)
+  CON: 12 (+1)
+  INT: 10 (+0)
+  WIS: 10 (+0)
+  CHA: 8 (-1)
+Weapon Proficiencies: martial
+Saving Throws: STR, CON
+Skills: Athletics, Perception
+PS C:\dev\grimengine> pnpm dev -- character check STR --dc 13 --seed grim
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "check" "STR" "--dc" "13" "--seed" "grim"
+
+Ability Check: STR vs DC 13
+Mods: base +3
+Rolls: [4] → total 7
+Result: FAILURE
+PS C:\dev\grimengine> pnpm dev -- character save CON --dc 12 --adv
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "save" "CON" "--dc" "12" "--adv"
+
+Saving Throw: CON adv vs DC 12
+Mods: base +1, PB +2
+Rolls: [11, 4] → total 14
+Result: SUCCESS
+PS C:\dev\grimengine> pnpm dev -- character attack "Longsword" --twohanded --ac 15 --seed grim
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "attack" "Longsword" "--twohanded" "--ac" "15" "--seed" "grim"
+
+Character Attack: Longsword
+Ability used: STR (+3)
+Proficiency: yes (PB +2)
+Attack: 1d20+5 vs AC 15
+Rolls: [4] → natural 4 → total 9 → MISS
+Damage: not rolled
+PS C:\dev\grimengine> pnpm dev -- character attack "Longsword" --twohanded --ac 15 --seed grim
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "attack" "Longsword" "--twohanded" "--ac" "15" "--seed" "grim"
+
+Character Attack: Longsword
+Ability used: STR (+3)
+Proficiency: yes (PB +2)
+Attack: 1d20+5 vs AC 15
+Rolls: [4] → natural 4 → total 9 → MISS
+Damage: not rolled
+PS C:\dev\grimengine> pnpm dev -- character attack "Longsword" --twohanded --ac 15 --seed test 
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "attack" "Longsword" "--twohanded" "--ac" "15" "--seed" "test"
+
+Character Attack: Longsword
+Ability used: STR (+3)
+Proficiency: yes (PB +2)
+Attack: 1d20+5 vs AC 15
+Rolls: [16] → natural 16 → total 21 → HIT
+Damage: 1d10+3
+Rolls: [8] → base 11 → final 11
+PS C:\dev\grimengine> pnpm dev -- character unload
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "unload"
+
+Character session cleared.
+PS C:\dev\grimengine> 
