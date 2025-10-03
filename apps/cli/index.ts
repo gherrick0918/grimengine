@@ -36,6 +36,10 @@ import {
   nextTurn as encounterNextTurn,
   currentActor as encounterCurrentActor,
   actorAttack as encounterActorAttack,
+  recordLoot as encounterRecordLoot,
+  recordXP as encounterRecordXP,
+  rollCoinsForCR,
+  totalXP,
   type EncounterState,
   type Actor as EncounterActor,
   type PlayerActor,
@@ -48,10 +52,12 @@ import {
   type Weapon,
   type Character,
   type SkillName,
+  type CoinBundle,
 } from '@grimengine/core';
 import { WEAPONS, getWeaponByName } from '@grimengine/rules-srd/weapons';
 import { getArmorByName, SHIELD } from '@grimengine/rules-srd/armor';
 import { getMonsterByName } from '@grimengine/rules-srd/monsters';
+import { randomSimpleItem } from '@grimengine/rules-srd/loot';
 import {
   cachePath as monsterCachePath,
   getMonster as fetchMonster,
@@ -97,6 +103,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- character attack "<name>" [--twohanded] [--ac <n>] [--adv|--dis] [--seed <value>]');
   console.log('  pnpm dev -- character equip [--armor "<ArmorName>"] [--shield on|off] [--weapon "<WeaponName>"] [--hitdie d6|d8|d10|d12]');
   console.log('  pnpm dev -- character set [--level <n>]');
+  console.log('  pnpm dev -- character add-xp <n>');
   console.log('  pnpm dev -- character unload');
   console.log('  pnpm dev -- encounter start [--seed <value>]');
   console.log('  pnpm dev -- encounter add pc "<name>"');
@@ -109,6 +116,8 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter roll-init');
   console.log('  pnpm dev -- encounter next');
   console.log('  pnpm dev -- encounter attack "<attacker>" "<defender>" [--adv|--dis] [--twohanded] [--seed <value>]');
+  console.log('  pnpm dev -- encounter loot [--seed <value>] [--items <n>] [--note "<text>"]');
+  console.log('  pnpm dev -- encounter xp [--party <n>]');
   console.log('  pnpm dev -- encounter end');
 }
 
@@ -374,6 +383,70 @@ function formatWeaponProperties(weapon: Weapon): string {
   return parts.length > 0 ? parts.join(', ') : 'none';
 }
 
+const FRACTION_CR_VALUES: { value: number; label: string }[] = [
+  { value: 0, label: '0' },
+  { value: 0.125, label: '1/8' },
+  { value: 0.25, label: '1/4' },
+  { value: 0.5, label: '1/2' },
+];
+
+function normalizeMonsterBaseName(name: string): string {
+  return name.replace(/\s+#\d+$/i, '').trim() || name;
+}
+
+function formatChallengeRating(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.length > 0) {
+    return value;
+  }
+  if (typeof value === 'number') {
+    for (const entry of FRACTION_CR_VALUES) {
+      if (Math.abs(value - entry.value) < 1e-6) {
+        return entry.label;
+      }
+    }
+    if (Number.isInteger(value)) {
+      return value.toString();
+    }
+    return value.toString();
+  }
+  return undefined;
+}
+
+function challengeRatingFromCache(name: string): string | undefined {
+  const cached = readCachedMonster(name);
+  if (cached && typeof cached === 'object' && 'challenge_rating' in cached) {
+    return formatChallengeRating((cached as { challenge_rating?: unknown }).challenge_rating);
+  }
+  return undefined;
+}
+
+function defeatedMonstersWithCR(state: EncounterState): { actor: MonsterActor; cr: string; baseName: string }[] {
+  const DEFAULT_CR = '1/2';
+  const entries: { actor: MonsterActor; cr: string; baseName: string }[] = [];
+  Object.values(state.actors).forEach((actor) => {
+    if (actor.type === 'monster' && state.defeated.has(actor.id)) {
+      const baseName = normalizeMonsterBaseName(actor.name);
+      const cr = challengeRatingFromCache(baseName) ?? DEFAULT_CR;
+      entries.push({ actor, cr, baseName });
+    }
+  });
+  return entries;
+}
+
+function formatCoinBundle(coins: CoinBundle): string {
+  const parts = (
+    [
+      { key: 'pp', label: 'pp' },
+      { key: 'gp', label: 'gp' },
+      { key: 'sp', label: 'sp' },
+      { key: 'cp', label: 'cp' },
+    ] as const
+  )
+    .filter(({ key }) => coins[key] > 0)
+    .map(({ key, label }) => `${coins[key]} ${label}`);
+  return parts.length > 0 ? parts.join(', ') : 'none';
+}
+
 function requireLoadedCharacter(): Character {
   const character = loadCharacter();
   if (!character) {
@@ -450,6 +523,15 @@ function handleCharacterLoadCommand(path: string | undefined): void {
       proficiencies: (data as { proficiencies?: Character['proficiencies'] }).proficiencies,
     };
 
+    const xpRaw = (data as { xp?: unknown }).xp;
+    if (xpRaw !== undefined) {
+      const xpValue = Number(xpRaw);
+      if (!Number.isFinite(xpValue) || xpValue < 0) {
+        throw new Error('Character xp must be a non-negative number when provided.');
+      }
+      character.xp = Math.floor(xpValue);
+    }
+
     const equippedRaw = (data as { equipped?: unknown }).equipped;
     if (equippedRaw !== undefined) {
       if (equippedRaw === null || typeof equippedRaw !== 'object' || Array.isArray(equippedRaw)) {
@@ -515,6 +597,8 @@ function handleCharacterShowCommand(): void {
   const mods = abilityMods(character.abilities);
 
   console.log(`${character.name} (level ${character.level})`);
+  const xpTotal = character.xp ?? 0;
+  console.log(`XP: ${xpTotal}`);
   console.log(`Proficiency Bonus: ${formatModifier(pb)}`);
   console.log('Ability Scores:');
   ABILITY_NAMES.forEach((ability) => {
@@ -1104,6 +1188,31 @@ function handleCharacterEquipCommand(rawArgs: string[]): void {
   process.exit(0);
 }
 
+function handleCharacterAddXpCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Missing XP amount.');
+    process.exit(1);
+  }
+
+  let amount: number;
+  try {
+    amount = parseNonNegativeInteger(rawArgs[0], 'XP');
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const character = requireLoadedCharacter();
+  const current = character.xp ?? 0;
+  character.xp = current + amount;
+  saveCharacter(character);
+  console.log(`Added ${amount} XP. Total XP: ${character.xp}`);
+  process.exit(0);
+}
+
 function handleCharacterSetCommand(rawArgs: string[]): void {
   if (rawArgs.length === 0) {
     console.error('Provide at least one option to set.');
@@ -1357,6 +1466,11 @@ function handleCharacterCommand(rawArgs: string[]): void {
 
   if (subcommand === 'equip') {
     handleCharacterEquipCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'add-xp') {
+    handleCharacterAddXpCommand(rest);
     return;
   }
 
@@ -1741,6 +1855,141 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
   process.exit(0);
 }
 
+function handleEncounterLootCommand(rawArgs: string[]): void {
+  const encounter = requireEncounterState();
+  const defeated = defeatedMonstersWithCR(encounter);
+  if (defeated.length === 0) {
+    console.log('No defeated monsters to loot.');
+    process.exit(0);
+  }
+
+  let seed: string | undefined;
+  let itemsCount = 0;
+  let note: string | undefined;
+
+  try {
+    for (let i = 0; i < rawArgs.length; i += 1) {
+      const arg = rawArgs[i];
+      if (arg.startsWith('--seed=')) {
+        seed = arg.slice('--seed='.length);
+        continue;
+      }
+      if (arg === '--seed') {
+        seed = rawArgs[i + 1];
+        if (seed === undefined) {
+          throw new Error('Expected value after --seed.');
+        }
+        i += 1;
+        continue;
+      }
+      if (arg.startsWith('--items=')) {
+        itemsCount = parseNonNegativeInteger(arg.slice('--items='.length), '--items');
+        continue;
+      }
+      if (arg === '--items') {
+        itemsCount = parseNonNegativeInteger(rawArgs[i + 1], '--items');
+        i += 1;
+        continue;
+      }
+      if (arg.startsWith('--note=')) {
+        note = arg.slice('--note='.length);
+        continue;
+      }
+      if (arg === '--note') {
+        note = rawArgs[i + 1];
+        if (note === undefined) {
+          throw new Error('Expected value after --note.');
+        }
+        i += 1;
+        continue;
+      }
+
+      console.warn(`Ignoring unknown argument: ${arg}`);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  const baseSeed = seed ?? encounter.seed;
+  const totals: CoinBundle = { cp: 0, sp: 0, gp: 0, pp: 0 };
+
+  defeated.forEach(({ actor, cr }) => {
+    const coinSeed = baseSeed ? `${baseSeed}:${actor.id}` : undefined;
+    const coins = rollCoinsForCR(cr, coinSeed);
+    totals.cp += coins.cp;
+    totals.sp += coins.sp;
+    totals.gp += coins.gp;
+    totals.pp += coins.pp;
+  });
+
+  const items: string[] = [];
+  for (let i = 0; i < itemsCount; i += 1) {
+    const itemSeed = baseSeed ? `${baseSeed}:item:${i}` : undefined;
+    items.push(randomSimpleItem(itemSeed));
+  }
+
+  const updated = encounterRecordLoot(encounter, { coins: totals, items, note });
+  saveEncounter(updated);
+
+  console.log(`Loot (${defeated.length} defeated):`);
+  console.log(`  Coins: ${formatCoinBundle(totals)}`);
+  console.log(`  Items: ${items.length > 0 ? items.join(', ') : 'none'}`);
+  if (note && note.length > 0) {
+    console.log(`  Note: ${note}`);
+  }
+  console.log('Saved to encounter log.');
+  process.exit(0);
+}
+
+function handleEncounterXpCommand(rawArgs: string[]): void {
+  const encounter = requireEncounterState();
+  const defeated = defeatedMonstersWithCR(encounter);
+  if (defeated.length === 0) {
+    console.log('No defeated monsters for XP.');
+    process.exit(0);
+  }
+
+  let partySize = 1;
+
+  try {
+    for (let i = 0; i < rawArgs.length; i += 1) {
+      const arg = rawArgs[i];
+      if (arg.startsWith('--party=')) {
+        partySize = parsePositiveInteger(arg.slice('--party='.length), '--party');
+        continue;
+      }
+      if (arg === '--party') {
+        partySize = parsePositiveInteger(rawArgs[i + 1], '--party');
+        i += 1;
+        continue;
+      }
+
+      console.warn(`Ignoring unknown argument: ${arg}`);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  const crs = defeated.map((entry) => entry.cr);
+  const total = totalXP(crs);
+  const updated = encounterRecordXP(encounter, { crs, total });
+  saveEncounter(updated);
+
+  const share = partySize > 0 ? total / partySize : total;
+  const shareLabel = Number.isInteger(share) ? `${share}` : share.toFixed(2);
+  const partyLabel = partySize > 0 ? ` (party size ${partySize} ⇒ ${shareLabel} each)` : '';
+
+  console.log(`Total XP: ${total}${partyLabel}`);
+  console.log('Saved to encounter log.');
+  process.exit(0);
+}
+
 function handleEncounterEndCommand(): void {
   clearEncounter();
   console.log('Encounter ended.');
@@ -1798,6 +2047,16 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'next') {
     handleEncounterNextCommand();
+    return;
+  }
+
+  if (subcommand === 'loot') {
+    handleEncounterLootCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'xp') {
+    handleEncounterXpCommand(rest);
     return;
   }
 
@@ -2336,6 +2595,22 @@ function parseSignedInteger(value: string | undefined, label: string): number {
     throw new Error(`${label} must be an integer.`);
   }
 
+  return parsed;
+}
+
+function parseNonNegativeInteger(value: string | undefined, label: string): number {
+  const parsed = parseSignedInteger(value, label);
+  if (parsed < 0) {
+    throw new Error(`${label} must be zero or a positive integer.`);
+  }
+  return parsed;
+}
+
+function parsePositiveInteger(value: string | undefined, label: string): number {
+  const parsed = parseSignedInteger(value, label);
+  if (parsed <= 0) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
   return parsed;
 }
 

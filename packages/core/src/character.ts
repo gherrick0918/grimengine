@@ -57,6 +57,7 @@ export interface Equipped {
 export interface Character {
   name: string;
   level: number;
+  xp?: number;
   abilities: CharacterAbilityScores;
   proficiencies?: CharacterProficiencies;
   equipped?: Equipped;

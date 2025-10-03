@@ -45,7 +45,11 @@ importers:
 
   packages/adapters/rules-srd: {}
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      '@grimengine/rules-srd':
+        specifier: workspace:*
+        version: link:../adapters/rules-srd
 
 packages:
 
