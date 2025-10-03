@@ -2,7 +2,12 @@ import type { AbilityName } from './abilityScores.js';
 import { abilityCheck, savingThrow } from './checks.js';
 import { SKILL_ABILITY } from './skills.js';
 import type { ResolveAttackResult } from './combat.js';
-import { resolveWeaponAttack, type Proficiencies as WeaponProficiencies, type Weapon } from './weapons.js';
+import {
+  chooseAttackAbility,
+  resolveWeaponAttack,
+  type Proficiencies as WeaponProficiencies,
+  type Weapon,
+} from './weapons.js';
 
 export type SkillName =
   | 'Acrobatics'
@@ -42,19 +47,47 @@ export interface CharacterProficiencies {
   expertise?: SkillName[];
 }
 
+export interface Equipped {
+  armor?: string;
+  shield?: boolean;
+  weapon?: string;
+  hitDie?: 'd6' | 'd8' | 'd10' | 'd12';
+}
+
 export interface Character {
   name: string;
   level: number;
   abilities: CharacterAbilityScores;
   proficiencies?: CharacterProficiencies;
+  equipped?: Equipped;
 }
 
 type WeaponLookup = (name: string) => Weapon | undefined;
 
 let weaponLookup: WeaponLookup | undefined;
 
+type ArmorCategory = 'light' | 'medium' | 'heavy';
+
+interface ArmorData {
+  category: ArmorCategory;
+  baseAC: number;
+  dexCap?: number;
+}
+
+type ArmorLookup = (name: string) => ArmorData | undefined;
+
+let armorLookup: ArmorLookup | undefined;
+let shieldBonus = 2;
+
 export function setCharacterWeaponLookup(lookup: WeaponLookup | undefined): void {
   weaponLookup = lookup;
+}
+
+export function setCharacterArmorData(lookup: ArmorLookup | undefined, shieldBonusValue?: number): void {
+  armorLookup = lookup;
+  if (typeof shieldBonusValue === 'number') {
+    shieldBonus = shieldBonusValue;
+  }
 }
 
 export function abilityMod(score: number): number {
@@ -163,6 +196,82 @@ function resolveCharacterAbilityModifier(
 ): number {
   const mods = abilityMods(character.abilities);
   return mods[ability] + extraMod;
+}
+
+export function derivedAC(character: Character): number {
+  const dexMod = abilityMod(character.abilities.DEX);
+  const armorName = character.equipped?.armor;
+  const shield = character.equipped?.shield ? shieldBonus : 0;
+
+  if (!armorName || !armorLookup) {
+    return 10 + dexMod + shield;
+  }
+
+  const armor = armorLookup(armorName);
+  if (!armor) {
+    return 10 + dexMod + shield;
+  }
+
+  let dexContribution = 0;
+  if (armor.category === 'light') {
+    dexContribution = dexMod;
+  } else if (armor.category === 'medium') {
+    const cap = typeof armor.dexCap === 'number' ? armor.dexCap : 2;
+    dexContribution = Math.min(dexMod, cap);
+  }
+
+  return armor.baseAC + dexContribution + shield;
+}
+
+export function derivedMaxHP(character: Character): number {
+  const die = character.equipped?.hitDie ?? 'd8';
+  const dieMax = { d6: 6, d8: 8, d10: 10, d12: 12 }[die];
+  const conMod = abilityMod(character.abilities.CON);
+
+  let hp = dieMax + conMod;
+  const averagePerLevel = Math.ceil((dieMax + 1) / 2);
+
+  for (let level = 2; level <= character.level; level += 1) {
+    hp += averagePerLevel + conMod;
+  }
+
+  return Math.max(hp, 1);
+}
+
+export function derivedDefaultWeaponProfile(character: Character):
+  | { name: string; attackMod: number; damageExpr: string; versatileExpr?: string }
+  | null {
+  const weaponName = character.equipped?.weapon;
+  if (!weaponName) {
+    return null;
+  }
+
+  const weapon = weaponLookup ? weaponLookup(weaponName) : undefined;
+  if (!weapon) {
+    return null;
+  }
+
+  const mods = abilityMods(character.abilities);
+  const ability = chooseAttackAbility(weapon, mods);
+  const abilityMod = mods[ability] ?? 0;
+  const proficiencyBonus = proficiencyBonusForLevel(character.level);
+  const proficient = character.proficiencies?.weapons?.[weapon.category] === true;
+  const attackMod = abilityMod + (proficient ? proficiencyBonus : 0);
+
+  const withAbilityMod = (expression: string): string => {
+    const sign = abilityMod >= 0 ? `+${abilityMod}` : `${abilityMod}`;
+    return expression.replace(/\+0\b/, sign);
+  };
+
+  const damageExpr = withAbilityMod(weapon.damage.expression);
+  const versatileExpr = weapon.versatile ? withAbilityMod(weapon.versatile.expression) : undefined;
+
+  return {
+    name: weapon.name,
+    attackMod,
+    damageExpr,
+    versatileExpr,
+  };
 }
 
 export function characterAbilityCheck(
