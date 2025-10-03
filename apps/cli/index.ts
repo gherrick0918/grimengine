@@ -54,6 +54,7 @@ import { getArmorByName, SHIELD } from '@grimengine/rules-srd/armor';
 import { getMonsterByName } from '@grimengine/rules-srd/monsters';
 import { clearEncounter, loadEncounter, saveEncounter } from './encounterSession';
 import { clearCharacter, loadCharacter, saveCharacter } from './session';
+import { listVaultNames, loadFromVault, saveToVault } from './char-vault';
 
 function showUsage(): void {
   console.log('Usage:');
@@ -74,13 +75,18 @@ function showUsage(): void {
     '  pnpm dev -- weapon attack "<name>" [--str <n>] [--dex <n>] [--pb <n>] [--profs <simple|martial|comma list>] [--twohanded] [--adv|--dis] [--ac <n>] [--seed <value>]'
   );
   console.log('  pnpm dev -- character load "<path.json>"');
+  console.log('  pnpm dev -- character load-name "<name>"');
   console.log('  pnpm dev -- character show');
   console.log('  pnpm dev -- character derive');
   console.log('  pnpm dev -- character check <ability> [--dc <n>] [--adv|--dis] [--seed <value>] [--extraMod <n>]');
   console.log('  pnpm dev -- character save <ability> [--dc <n>] [--adv|--dis] [--seed <value>]');
+  console.log('  pnpm dev -- character save --name "<name>"');
   console.log('  pnpm dev -- character skill "<SkillName>" [--dc <n>] [--adv|--dis] [--seed <value>] [--extraMod <n>]');
   console.log('  pnpm dev -- character skills');
+  console.log('  pnpm dev -- character list');
   console.log('  pnpm dev -- character attack "<name>" [--twohanded] [--ac <n>] [--adv|--dis] [--seed <value>]');
+  console.log('  pnpm dev -- character equip [--armor "<ArmorName>"] [--shield on|off] [--weapon "<WeaponName>"] [--hitdie d6|d8|d10|d12]');
+  console.log('  pnpm dev -- character set [--level <n>]');
   console.log('  pnpm dev -- character unload');
   console.log('  pnpm dev -- encounter start [--seed <value>]');
   console.log('  pnpm dev -- encounter add pc "<name>"');
@@ -352,6 +358,10 @@ function requireLoadedCharacter(): Character {
     process.exit(1);
   }
   return character;
+}
+
+function formatShieldValue(value: boolean): string {
+  return value ? 'on' : 'off';
 }
 
 function printDerivedStats(character: Character): void {
@@ -751,6 +761,36 @@ function handleCharacterCheckCommand(rawArgs: string[]): void {
 
 function handleCharacterSaveCommand(rawArgs: string[]): void {
   if (rawArgs.length === 0) {
+    console.error('Missing arguments for character save.');
+    process.exit(1);
+  }
+
+  const firstArg = rawArgs[0];
+  if (firstArg.toLowerCase() === '--name' || firstArg.toLowerCase().startsWith('--name=')) {
+    let name: string | undefined;
+    if (firstArg.includes('=')) {
+      name = firstArg.slice(firstArg.indexOf('=') + 1).trim();
+    } else {
+      if (rawArgs.length < 2) {
+        console.error('Expected value after --name.');
+        process.exit(1);
+      }
+      name = rawArgs[1];
+    }
+
+    const trimmedName = name.trim();
+    if (trimmedName.length === 0) {
+      console.error('Character name is required for vault save.');
+      process.exit(1);
+    }
+
+    const character = requireLoadedCharacter();
+    saveToVault(trimmedName, character);
+    console.log(`Saved character "${trimmedName}" to vault.`);
+    process.exit(0);
+  }
+
+  if (rawArgs.length === 0) {
     console.error('Missing ability for character save.');
     process.exit(1);
   }
@@ -843,6 +883,264 @@ function handleCharacterSaveCommand(rawArgs: string[]): void {
     console.log(`Result: ${result.total}`);
   }
 
+  process.exit(0);
+}
+
+function handleCharacterVaultListCommand(): void {
+  const names = listVaultNames();
+  if (names.length === 0) {
+    console.log('No saved characters.');
+  } else {
+    console.log(`Characters: ${names.join(', ')}`);
+  }
+  process.exit(0);
+}
+
+function handleCharacterVaultLoadCommand(name: string | undefined): void {
+  if (!name) {
+    console.error('Missing character name for load-name command.');
+    process.exit(1);
+  }
+
+  const trimmedName = name.trim();
+  if (trimmedName.length === 0) {
+    console.error('Character name cannot be empty.');
+    process.exit(1);
+  }
+
+  const character = loadFromVault(trimmedName);
+  if (!character) {
+    console.error(`No saved character named "${trimmedName}".`);
+    process.exit(1);
+  }
+
+  saveCharacter(character);
+  const pb = proficiencyBonusForLevel(character.level);
+  console.log(`Loaded character ${character.name} (lvl ${character.level}). PB ${formatModifier(pb)}`);
+  process.exit(0);
+}
+
+type HitDieValue = NonNullable<Character['equipped']>['hitDie'];
+
+function handleCharacterEquipCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Provide at least one option to update equipment.');
+    process.exit(1);
+  }
+
+  const character = requireLoadedCharacter();
+  const next: Character = { ...character };
+  const equipped = { ...(character.equipped ?? {}) } as NonNullable<Character['equipped']>;
+
+  let armorName: string | undefined;
+  let shieldValue: boolean | undefined;
+  let weaponName: string | undefined;
+  let hitDie: HitDieValue | undefined;
+
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const arg = rawArgs[i];
+    const lower = arg.toLowerCase();
+
+    if (lower.startsWith('--armor=')) {
+      armorName = arg.slice('--armor='.length).trim();
+      continue;
+    }
+
+    if (lower === '--armor') {
+      if (i + 1 >= rawArgs.length) {
+        console.error('Expected value after --armor.');
+        process.exit(1);
+      }
+      armorName = rawArgs[i + 1].trim();
+      i += 1;
+      continue;
+    }
+
+    if (lower === '--shield') {
+      if (i + 1 < rawArgs.length && !rawArgs[i + 1].startsWith('--')) {
+        const value = rawArgs[i + 1].toLowerCase();
+        if (value === 'on' || value === 'true') {
+          shieldValue = true;
+          i += 1;
+          continue;
+        }
+        if (value === 'off' || value === 'false') {
+          shieldValue = false;
+          i += 1;
+          continue;
+        }
+      }
+      shieldValue = true;
+      continue;
+    }
+
+    if (lower.startsWith('--shield=')) {
+      const value = arg.slice('--shield='.length).toLowerCase();
+      if (value === 'on' || value === 'true') {
+        shieldValue = true;
+      } else if (value === 'off' || value === 'false') {
+        shieldValue = false;
+      } else {
+        console.error('Shield value must be "on" or "off".');
+        process.exit(1);
+      }
+      continue;
+    }
+
+    if (lower === '--weapon') {
+      if (i + 1 >= rawArgs.length) {
+        console.error('Expected value after --weapon.');
+        process.exit(1);
+      }
+      weaponName = rawArgs[i + 1].trim();
+      i += 1;
+      continue;
+    }
+
+    if (lower.startsWith('--weapon=')) {
+      weaponName = arg.slice('--weapon='.length).trim();
+      continue;
+    }
+
+    if (lower === '--hitdie') {
+      if (i + 1 >= rawArgs.length) {
+        console.error('Expected value after --hitdie.');
+        process.exit(1);
+      }
+      hitDie = rawArgs[i + 1].trim().toLowerCase() as HitDieValue;
+      i += 1;
+      continue;
+    }
+
+    if (lower.startsWith('--hitdie=')) {
+      hitDie = arg.slice('--hitdie='.length).trim().toLowerCase() as HitDieValue;
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  if (armorName === undefined && shieldValue === undefined && weaponName === undefined && hitDie === undefined) {
+    console.error('No changes provided for equip command.');
+    process.exit(1);
+  }
+
+  const changes: string[] = [];
+
+  if (armorName !== undefined) {
+    if (armorName.length === 0) {
+      console.error('Armor name cannot be empty.');
+      process.exit(1);
+    }
+    const armor = getArmorByName(armorName);
+    if (!armor) {
+      console.error(`Unknown armor: ${armorName}`);
+      process.exit(1);
+    }
+    equipped.armor = armor.name;
+    changes.push(`Updated armor: ${armor.name}`);
+  }
+
+  if (shieldValue !== undefined) {
+    equipped.shield = shieldValue;
+    changes.push(`Updated shield: ${formatShieldValue(shieldValue)}`);
+  }
+
+  if (weaponName !== undefined) {
+    if (weaponName.length === 0) {
+      console.error('Weapon name cannot be empty.');
+      process.exit(1);
+    }
+    const weapon = getWeaponByName(weaponName);
+    if (!weapon) {
+      console.error(`Unknown weapon: ${weaponName}`);
+      process.exit(1);
+    }
+    equipped.weapon = weapon.name;
+    changes.push(`Updated weapon: ${weapon.name}`);
+  }
+
+  if (hitDie !== undefined) {
+    if (!['d6', 'd8', 'd10', 'd12'].includes(hitDie)) {
+      console.error('Hit die must be one of d6, d8, d10, or d12.');
+      process.exit(1);
+    }
+    equipped.hitDie = hitDie;
+    changes.push(`Updated hit die: ${hitDie}`);
+  }
+
+  if (Object.keys(equipped).length > 0) {
+    next.equipped = equipped;
+  } else {
+    delete next.equipped;
+  }
+
+  saveCharacter(next);
+  changes.forEach((line) => console.log(line));
+  printDerivedStats(next);
+  process.exit(0);
+}
+
+function handleCharacterSetCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Provide at least one option to set.');
+    process.exit(1);
+  }
+
+  const character = requireLoadedCharacter();
+  let level: number | undefined;
+
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const arg = rawArgs[i];
+    const lower = arg.toLowerCase();
+
+    if (lower.startsWith('--level=')) {
+      const value = Number.parseInt(arg.slice('--level='.length), 10);
+      if (!Number.isFinite(value) || value <= 0) {
+        console.error('Level must be a positive integer.');
+        process.exit(1);
+      }
+      level = value;
+      continue;
+    }
+
+    if (lower === '--level') {
+      if (i + 1 >= rawArgs.length) {
+        console.error('Expected value after --level.');
+        process.exit(1);
+      }
+      const value = Number.parseInt(rawArgs[i + 1], 10);
+      if (!Number.isFinite(value) || value <= 0) {
+        console.error('Level must be a positive integer.');
+        process.exit(1);
+      }
+      level = value;
+      i += 1;
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  if (level === undefined) {
+    console.error('No supported fields provided for set command.');
+    process.exit(1);
+  }
+
+  const next: Character = { ...character };
+  if (level !== undefined) {
+    next.level = level;
+  }
+
+  saveCharacter(next);
+  if (level !== undefined) {
+    const levelMessage = level === character.level ? `Level remains ${level}.` : `Updated level: ${character.level} → ${level}.`;
+    console.log(levelMessage);
+  }
+
+  const pb = proficiencyBonusForLevel(next.level);
+  console.log(`Proficiency Bonus: ${formatModifier(pb)}`);
+  printDerivedStats(next);
   process.exit(0);
 }
 
@@ -1021,6 +1319,26 @@ function handleCharacterCommand(rawArgs: string[]): void {
 
   if (subcommand === 'attack') {
     handleCharacterAttackCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'list') {
+    handleCharacterVaultListCommand();
+    return;
+  }
+
+  if (subcommand === 'load-name') {
+    handleCharacterVaultLoadCommand(rest[0]);
+    return;
+  }
+
+  if (subcommand === 'equip') {
+    handleCharacterEquipCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'set') {
+    handleCharacterSetCommand(rest);
     return;
   }
 
