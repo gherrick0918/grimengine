@@ -36,6 +36,11 @@ import {
   nextTurn as encounterNextTurn,
   currentActor as encounterCurrentActor,
   actorAttack as encounterActorAttack,
+  setCondition as encounterSetCondition,
+  clearCondition as encounterClearCondition,
+  combineAdvantage,
+  attackAdvFromConditions,
+  hasCondition,
   recordLoot as encounterRecordLoot,
   recordXP as encounterRecordXP,
   rollCoinsForCR,
@@ -53,6 +58,7 @@ import {
   type Character,
   type SkillName,
   type CoinBundle,
+  type Condition,
 } from '@grimengine/core';
 import { WEAPONS, getWeaponByName } from '@grimengine/rules-srd/weapons';
 import { getArmorByName, SHIELD } from '@grimengine/rules-srd/armor';
@@ -115,7 +121,10 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter delete "<name>"');
   console.log('  pnpm dev -- encounter roll-init');
   console.log('  pnpm dev -- encounter next');
-  console.log('  pnpm dev -- encounter attack "<attacker>" "<defender>" [--adv|--dis] [--twohanded] [--seed <value>]');
+  console.log('  pnpm dev -- encounter attack "<attacker>" "<defender>" [--melee|--ranged] [--adv|--dis] [--twohanded] [--seed <value>]');
+  console.log('  pnpm dev -- encounter condition add "<actorIdOrName>" <condition>');
+  console.log('  pnpm dev -- encounter condition remove "<actorIdOrName>" <condition>');
+  console.log('  pnpm dev -- encounter condition list');
   console.log('  pnpm dev -- encounter loot [--seed <value>] [--items <n>] [--note "<text>"]');
   console.log('  pnpm dev -- encounter xp [--party <n>]');
   console.log('  pnpm dev -- encounter end');
@@ -123,6 +132,7 @@ function showUsage(): void {
 
 const ABILITY_NAMES: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
 const SKILL_NAMES = Object.keys(SKILL_ABILITY) as SkillName[];
+const CONDITION_NAMES: Condition[] = ['prone', 'restrained', 'poisoned', 'grappled'];
 
 function isAbilityName(value: string): value is AbilityName {
   return ABILITY_NAMES.includes(value as AbilityName);
@@ -131,6 +141,11 @@ function isAbilityName(value: string): value is AbilityName {
 function normalizeSkillName(raw: string): SkillName | undefined {
   const target = raw.trim().toLowerCase();
   return SKILL_NAMES.find((skill) => skill.toLowerCase() === target);
+}
+
+function parseConditionName(raw: string): Condition | undefined {
+  const target = raw.trim().toLowerCase();
+  return CONDITION_NAMES.find((condition) => condition === target);
 }
 
 setCharacterWeaponLookup(getWeaponByName);
@@ -257,6 +272,48 @@ function sortActorsForListing(state: EncounterState): EncounterActor[] {
   });
 }
 
+function sortedConditions(set: EncounterActor['conditions'] | undefined): Condition[] {
+  if (!set) {
+    return [];
+  }
+  return Object.keys(set).sort() as Condition[];
+}
+
+function formatConditionList(set: EncounterActor['conditions'] | undefined): string {
+  const list = sortedConditions(set);
+  return list.length > 0 ? list.join(', ') : '—';
+}
+
+function describeConditionEffects(
+  attacker: EncounterActor,
+  defender: EncounterActor,
+  mode: 'melee' | 'ranged',
+): string[] {
+  const effects: string[] = [];
+
+  if (hasCondition(defender.conditions, 'prone')) {
+    if (mode === 'melee') {
+      effects.push('advantage from defender prone');
+    } else {
+      effects.push('disadvantage from defender prone');
+    }
+  }
+
+  if (hasCondition(defender.conditions, 'restrained')) {
+    effects.push('advantage from defender restrained');
+  }
+
+  if (hasCondition(attacker.conditions, 'restrained')) {
+    effects.push('disadvantage from attacker restrained');
+  }
+
+  if (hasCondition(attacker.conditions, 'poisoned')) {
+    effects.push('disadvantage from attacker poisoned');
+  }
+
+  return effects;
+}
+
 function nextMonsterNumber(state: EncounterState, baseName: string): number {
   const pattern = new RegExp(`^${baseName.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')} #([0-9]+)$`, 'i');
   let highest = 0;
@@ -277,7 +334,9 @@ function formatActorLine(state: EncounterState, actor: EncounterActor, currentId
   const defeated = state.defeated.has(actor.id) ? ' [DEFEATED]' : '';
   const initiative = state.order.find((entry) => entry.actorId === actor.id);
   const initLabel = initiative ? ` init=${initiative.total} (roll ${initiative.rolled})` : '';
-  return `${pointer} [${actor.side}] ${actor.name} (id=${actor.id}) AC ${actor.ac} HP ${formatHitPoints(actor)}${defeated}${initLabel}`;
+  const conditions = sortedConditions(actor.conditions);
+  const conditionsLabel = conditions.length > 0 ? ` [conditions: ${conditions.join(', ')}]` : '';
+  return `${pointer} [${actor.side}] ${actor.name} (id=${actor.id}) AC ${actor.ac} HP ${formatHitPoints(actor)}${defeated}${conditionsLabel}${initLabel}`;
 }
 
 function buildPlayerActor(state: EncounterState, name: string, character: Character): PlayerActor {
@@ -1614,6 +1673,125 @@ async function handleEncounterAddCommand(rawArgs: string[]): Promise<void> {
   process.exit(1);
 }
 
+function requireConditionName(raw: string | undefined): Condition {
+  if (!raw) {
+    console.error(`Condition name is required. Expected one of: ${CONDITION_NAMES.join(', ')}`);
+    process.exit(1);
+  }
+  const parsed = parseConditionName(raw);
+  if (!parsed) {
+    console.error(`Unknown condition: ${raw}. Expected one of: ${CONDITION_NAMES.join(', ')}`);
+    process.exit(1);
+  }
+  return parsed;
+}
+
+function handleEncounterConditionAddCommand(rawIdentifier: string | undefined, rawCondition: string | undefined): void {
+  if (!rawIdentifier) {
+    console.error('Usage: pnpm dev -- encounter condition add "<actorIdOrName>" <condition>');
+    process.exit(1);
+  }
+
+  const condition = requireConditionName(rawCondition);
+  let encounter = requireEncounterState();
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, rawIdentifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  const alreadyHad = hasCondition(actor.conditions, condition);
+  encounter = encounterSetCondition(encounter, actor.id, condition);
+  saveEncounter(encounter);
+
+  const updated = encounter.actors[actor.id];
+  const label = formatConditionList(updated?.conditions);
+  if (alreadyHad) {
+    console.log(`${actor.name} (id=${actor.id}) already had ${condition}. Conditions: ${label}.`);
+  } else {
+    console.log(`Added ${condition} to ${actor.name} (id=${actor.id}). Conditions: ${label}.`);
+  }
+  process.exit(0);
+}
+
+function handleEncounterConditionRemoveCommand(rawIdentifier: string | undefined, rawCondition: string | undefined): void {
+  if (!rawIdentifier) {
+    console.error('Usage: pnpm dev -- encounter condition remove "<actorIdOrName>" <condition>');
+    process.exit(1);
+  }
+
+  const condition = requireConditionName(rawCondition);
+  let encounter = requireEncounterState();
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, rawIdentifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  const hadCondition = hasCondition(actor.conditions, condition);
+  encounter = encounterClearCondition(encounter, actor.id, condition);
+  saveEncounter(encounter);
+
+  const updated = encounter.actors[actor.id];
+  const label = formatConditionList(updated?.conditions);
+  if (hadCondition) {
+    console.log(`Removed ${condition} from ${actor.name} (id=${actor.id}). Conditions: ${label}.`);
+  } else {
+    console.log(`${actor.name} (id=${actor.id}) did not have ${condition}. Conditions: ${label}.`);
+  }
+  process.exit(0);
+}
+
+function handleEncounterConditionListCommand(): void {
+  const encounter = requireEncounterState();
+  const actors = sortActorsForListing(encounter);
+
+  if (actors.length === 0) {
+    console.log('No actors in the encounter.');
+    process.exit(0);
+  }
+
+  console.log('Conditions:');
+  actors.forEach((actor) => {
+    console.log(`${actor.name} (id=${actor.id}): ${formatConditionList(actor.conditions)}`);
+  });
+  process.exit(0);
+}
+
+function handleEncounterConditionCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- encounter condition <add|remove|list> ...');
+    process.exit(1);
+  }
+
+  const [action, ...rest] = rawArgs;
+  if (action === 'list') {
+    handleEncounterConditionListCommand();
+    return;
+  }
+  if (action === 'add') {
+    const [identifier, condition] = rest;
+    handleEncounterConditionAddCommand(identifier, condition);
+    return;
+  }
+  if (action === 'remove') {
+    const [identifier, condition] = rest;
+    handleEncounterConditionRemoveCommand(identifier, condition);
+    return;
+  }
+
+  console.error(`Unknown encounter condition action: ${action}`);
+  process.exit(1);
+}
+
 function handleEncounterListCommand(): void {
   const encounter = requireEncounterState();
   const current = encounterCurrentActor(encounter);
@@ -1756,7 +1934,9 @@ function handleEncounterDeleteCommand(rawArgs: string[]): void {
 
 function handleEncounterAttackCommand(rawArgs: string[]): void {
   if (rawArgs.length < 2) {
-    console.error('Usage: pnpm dev -- encounter attack "<attacker>" "<defender>" [--adv|--dis] [--twohanded] [--seed <value>]');
+    console.error(
+      'Usage: pnpm dev -- encounter attack "<attacker>" "<defender>" [--melee|--ranged] [--adv|--dis] [--twohanded] [--seed <value>]',
+    );
     process.exit(1);
   }
 
@@ -1765,11 +1945,28 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
   let disadvantage = false;
   let twoHanded = false;
   let seed: string | undefined;
+  let mode: 'melee' | 'ranged' | undefined;
 
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
     const lower = arg.toLowerCase();
 
+    if (lower === '--melee') {
+      if (mode && mode !== 'melee') {
+        console.error('Cannot specify both --melee and --ranged.');
+        process.exit(1);
+      }
+      mode = 'melee';
+      continue;
+    }
+    if (lower === '--ranged') {
+      if (mode && mode !== 'ranged') {
+        console.error('Cannot specify both --melee and --ranged.');
+        process.exit(1);
+      }
+      mode = 'ranged';
+      continue;
+    }
     if (lower === '--adv' || lower === '--advantage') {
       advantage = true;
       continue;
@@ -1818,16 +2015,36 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
     process.exit(1);
   }
 
+  const effectiveMode = mode ?? 'melee';
+  const conditionFlags = attackAdvFromConditions(attacker.conditions, defender.conditions, effectiveMode);
+  const combinedFlags = combineAdvantage({ advantage, disadvantage }, conditionFlags);
+  const conditionEffects = describeConditionEffects(attacker, defender, effectiveMode);
+  let conditionSummary = 'none';
+  if (conditionEffects.length > 0) {
+    conditionSummary = conditionEffects.join('; ');
+    if (conditionFlags.advantage && conditionFlags.disadvantage) {
+      conditionSummary = `${conditionSummary} → cancel`;
+    }
+  }
+  const finalAdvantage = combinedFlags.advantage
+    ? 'advantage'
+    : combinedFlags.disadvantage
+    ? 'disadvantage'
+    : 'normal';
+
   const result = encounterActorAttack(encounter, attacker.id, defender.id, {
     advantage,
     disadvantage,
     twoHanded,
     seed,
+    mode: effectiveMode,
   });
 
   encounter = result.state;
   saveEncounter(encounter);
 
+  console.log(`Mode: ${effectiveMode} (conditions: ${conditionSummary})`);
+  console.log(`Advantage state: ${finalAdvantage}`);
   const outcome = getAttackOutcome(result.attack);
   console.log(`Attack: ${result.attack.expression}`);
   const rollsLine = `Rolls: [${result.attack.d20s.join(', ')}] → natural ${result.attack.natural} → total ${result.attack.total}`;
@@ -2057,6 +2274,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'xp') {
     handleEncounterXpCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'condition') {
+    handleEncounterConditionCommand(rest);
     return;
   }
 
