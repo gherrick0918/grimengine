@@ -52,6 +52,12 @@ import {
 import { WEAPONS, getWeaponByName } from '@grimengine/rules-srd/weapons';
 import { getArmorByName, SHIELD } from '@grimengine/rules-srd/armor';
 import { getMonsterByName } from '@grimengine/rules-srd/monsters';
+import {
+  cachePath as monsterCachePath,
+  getMonster as fetchMonster,
+  listCachedMonsters,
+  readCachedMonster,
+} from '@grimengine/dnd5e-api/monsters.js';
 import { clearEncounter, loadEncounter, saveEncounter } from './encounterSession';
 import { clearCharacter, loadCharacter, saveCharacter } from './session';
 import { listVaultNames, loadFromVault, saveToVault } from './char-vault';
@@ -74,6 +80,9 @@ function showUsage(): void {
   console.log(
     '  pnpm dev -- weapon attack "<name>" [--str <n>] [--dex <n>] [--pb <n>] [--profs <simple|martial|comma list>] [--twohanded] [--adv|--dis] [--ac <n>] [--seed <value>]'
   );
+  console.log('  pnpm dev -- monster fetch "<name>"');
+  console.log('  pnpm dev -- monster list');
+  console.log('  pnpm dev -- monster show "<name>"');
   console.log('  pnpm dev -- character load "<path.json>"');
   console.log('  pnpm dev -- character load-name "<name>"');
   console.log('  pnpm dev -- character show');
@@ -320,6 +329,15 @@ function parseModifier(value: string | undefined): number {
 
 function formatModifier(value: number): string {
   return value >= 0 ? `+${value}` : `${value}`;
+}
+
+function formatMonsterAttack(attack: WeaponProfile | undefined): string {
+  if (!attack) {
+    return 'No attack profile available.';
+  }
+  const toHit = formatModifier(attack.attackMod);
+  const versatile = attack.versatileExpr ? ` (versatile ${attack.versatileExpr})` : '';
+  return `${attack.name} (${toHit}) → ${attack.damageExpr}${versatile}`;
 }
 
 function formatWeaponProperties(weapon: Weapon): string {
@@ -1390,7 +1408,7 @@ function handleEncounterAddPcCommand(name: string): void {
   process.exit(0);
 }
 
-function handleEncounterAddMonsterCommand(rawArgs: string[]): void {
+async function handleEncounterAddMonsterCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length === 0) {
     console.error('Missing monster name.');
     process.exit(1);
@@ -1428,10 +1446,19 @@ function handleEncounterAddMonsterCommand(rawArgs: string[]): void {
     console.warn(`Ignoring unknown argument: ${arg}`);
   }
 
-  const template = getMonsterByName(name);
+  let template = getMonsterByName(name);
   if (!template) {
-    console.error(`Unknown monster: ${name}`);
-    process.exit(1);
+    try {
+      template = await fetchMonster(name);
+      console.log(`Fetched ${template.name} from the 5e API.`);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(error.message);
+      } else {
+        console.error(`Unknown monster: ${name}`);
+      }
+      process.exit(1);
+    }
   }
 
   const encounter = requireEncounterState();
@@ -1442,7 +1469,7 @@ function handleEncounterAddMonsterCommand(rawArgs: string[]): void {
   process.exit(0);
 }
 
-function handleEncounterAddCommand(rawArgs: string[]): void {
+async function handleEncounterAddCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length < 2) {
     console.error('Usage: pnpm dev -- encounter add <pc|monster> "<name>" [...]');
     process.exit(1);
@@ -1460,7 +1487,7 @@ function handleEncounterAddCommand(rawArgs: string[]): void {
   }
 
   if (type === 'monster') {
-    handleEncounterAddMonsterCommand(rest);
+    await handleEncounterAddMonsterCommand(rest);
     return;
   }
 
@@ -1633,7 +1660,7 @@ function handleEncounterEndCommand(): void {
   process.exit(0);
 }
 
-function handleEncounterCommand(rawArgs: string[]): void {
+async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length === 0) {
     console.error('Missing encounter subcommand.');
     showUsage();
@@ -1648,7 +1675,7 @@ function handleEncounterCommand(rawArgs: string[]): void {
   }
 
   if (subcommand === 'add') {
-    handleEncounterAddCommand(rest);
+    await handleEncounterAddCommand(rest);
     return;
   }
 
@@ -1678,6 +1705,109 @@ function handleEncounterCommand(rawArgs: string[]): void {
   }
 
   console.error(`Unknown encounter subcommand: ${subcommand}`);
+  process.exit(1);
+}
+
+async function handleMonsterFetchCommand(name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    console.error('Monster name is required.');
+    process.exit(1);
+  }
+
+  try {
+    const monster = await fetchMonster(trimmed);
+    const attackSummary = formatMonsterAttack(monster.attacks[0]);
+    console.log(`${monster.name} — AC ${monster.ac}, HP ${monster.hp}`);
+    console.log(`Attack: ${attackSummary}`);
+    console.log(`Cached at ${monsterCachePath(trimmed)}`);
+    process.exit(0);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`Failed to fetch monster: ${error.message}`);
+    } else {
+      console.error('Failed to fetch monster.');
+    }
+    process.exit(1);
+  }
+}
+
+function handleMonsterListCommand(): void {
+  const slugs = listCachedMonsters();
+  if (slugs.length === 0) {
+    console.log('No cached monsters.');
+    process.exit(0);
+  }
+
+  console.log('Cached monsters:');
+  slugs.forEach((slug) => {
+    try {
+      const data = readCachedMonster(slug);
+      const displayName = typeof data?.name === 'string' ? data.name : slug;
+      console.log(`- ${displayName} (${slug})`);
+    } catch {
+      console.log(`- ${slug}`);
+    }
+  });
+  process.exit(0);
+}
+
+async function handleMonsterShowCommand(name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    console.error('Monster name is required.');
+    process.exit(1);
+  }
+
+  try {
+    const monster = await fetchMonster(trimmed);
+    const attackSummary = formatMonsterAttack(monster.attacks[0]);
+    console.log(`${monster.name} — AC ${monster.ac}, HP ${monster.hp}`);
+    console.log(`Attack: ${attackSummary}`);
+    process.exit(0);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`Failed to load monster: ${error.message}`);
+    } else {
+      console.error('Failed to load monster.');
+    }
+    process.exit(1);
+  }
+}
+
+async function handleMonsterCommand(rawArgs: string[]): Promise<void> {
+  if (rawArgs.length === 0) {
+    console.error('Missing monster subcommand.');
+    showUsage();
+    process.exit(1);
+  }
+
+  const [subcommand, ...rest] = rawArgs;
+
+  if (subcommand === 'fetch') {
+    if (rest.length === 0) {
+      console.error('Missing monster name for fetch command.');
+      process.exit(1);
+    }
+    await handleMonsterFetchCommand(rest[0]);
+    return;
+  }
+
+  if (subcommand === 'list') {
+    handleMonsterListCommand();
+    return;
+  }
+
+  if (subcommand === 'show') {
+    if (rest.length === 0) {
+      console.error('Missing monster name for show command.');
+      process.exit(1);
+    }
+    await handleMonsterShowCommand(rest[0]);
+    return;
+  }
+
+  console.error(`Unknown monster subcommand: ${subcommand}`);
   process.exit(1);
 }
 
@@ -2475,120 +2605,45 @@ function handleResolveCommand(rawArgs: string[]): void {
   process.exit(0);
 }
 
-const [, , ...argv] = process.argv;
-const args = argv[0] === '--' ? argv.slice(1) : argv;
+async function main(): Promise<void> {
+  const [, , ...argv] = process.argv;
+  const args = argv[0] === '--' ? argv.slice(1) : argv;
 
-if (args.length === 0 || args[0] === 'help' || args[0] === '--help') {
-  showUsage();
-  process.exit(0);
-}
-
-const [command, ...rest] = args;
-
-if (command === 'roll') {
-  if (rest.length === 0) {
-    console.error('Missing dice expression.');
+  if (args.length === 0 || args[0] === 'help' || args[0] === '--help') {
     showUsage();
-    process.exit(1);
+    process.exit(0);
   }
 
-  const [expression, ...rawArgs] = rest;
-  let advantage = false;
-  let disadvantage = false;
-  let seed: string | undefined;
+  const [command, ...rest] = args;
 
-  for (let i = 0; i < rawArgs.length; i += 1) {
-    const arg = rawArgs[i];
-    const lower = arg.toLowerCase();
-    if (lower === 'adv' || lower === 'advantage') {
-      advantage = true;
-      continue;
-    }
-    if (lower === 'dis' || lower === 'disadvantage' || lower === 'disadv') {
-      disadvantage = true;
-      continue;
-    }
-    if (arg.startsWith('--seed=')) {
-      seed = arg.slice('--seed='.length);
-      continue;
-    }
-    if (lower === '--seed') {
-      if (i + 1 >= rawArgs.length) {
-        console.error('Expected value after --seed.');
-        process.exit(1);
-      }
-      seed = rawArgs[i + 1];
-      i += 1;
-      continue;
+  if (command === 'roll') {
+    if (rest.length === 0) {
+      console.error('Missing dice expression.');
+      showUsage();
+      process.exit(1);
     }
 
-    console.warn(`Ignoring unknown argument: ${arg}`);
-  }
-
-  if (advantage && disadvantage) {
-    console.error('Cannot roll with both advantage and disadvantage.');
-    process.exit(1);
-  }
-
-  const advLabel = advantage ? ' with advantage' : disadvantage ? ' with disadvantage' : '';
-  console.log(`Rolling ${expression}${advLabel}...`);
-
-  const result = roll(expression, { advantage, disadvantage, seed });
-
-  console.log(`Rolls: [${result.rolls.join(', ')}] → total ${result.total}`);
-  process.exit(0);
-}
-
-if (command === 'character') {
-  handleCharacterCommand(rest);
-}
-
-if (command === 'encounter') {
-  handleEncounterCommand(rest);
-}
-
-if (command === 'check' || command === 'save') {
-  handleCheckCommand(command, rest);
-}
-
-if (command === 'attack') {
-  handleAttackCommand(rest);
-}
-
-if (command === 'damage') {
-  handleDamageCommand(rest);
-}
-
-if (command === 'resolve') {
-  handleResolveCommand(rest);
-}
-
-if (command === 'weapon') {
-  handleWeaponCommand(rest);
-}
-
-if (command === 'abilities') {
-  if (rest.length === 0) {
-    console.error('Missing abilities subcommand.');
-    showUsage();
-    process.exit(1);
-  }
-
-  const [subcommand, ...rawArgs] = rest;
-
-  if (subcommand === 'roll') {
+    const [expression, ...rawArgs] = rest;
+    let advantage = false;
+    let disadvantage = false;
     let seed: string | undefined;
-    let count: number | undefined;
-    let drop: number | undefined;
-    let sort: 'none' | 'asc' | 'desc' | undefined;
 
     for (let i = 0; i < rawArgs.length; i += 1) {
       const arg = rawArgs[i];
+      const lower = arg.toLowerCase();
+      if (lower === 'adv' || lower === 'advantage') {
+        advantage = true;
+        continue;
+      }
+      if (lower === 'dis' || lower === 'disadvantage' || lower === 'disadv') {
+        disadvantage = true;
+        continue;
+      }
       if (arg.startsWith('--seed=')) {
         seed = arg.slice('--seed='.length);
         continue;
       }
-      if (arg === '--seed') {
+      if (lower === '--seed') {
         if (i + 1 >= rawArgs.length) {
           console.error('Expected value after --seed.');
           process.exit(1);
@@ -2597,132 +2652,230 @@ if (command === 'abilities') {
         i += 1;
         continue;
       }
-      if (arg.startsWith('--count=')) {
-        const value = Number.parseInt(arg.slice('--count='.length), 10);
-        if (Number.isNaN(value) || value <= 0) {
-          console.error('Count must be a positive integer.');
-          process.exit(1);
-        }
-        count = value;
-        continue;
-      }
-      if (arg === '--count') {
-        if (i + 1 >= rawArgs.length) {
-          console.error('Expected value after --count.');
-          process.exit(1);
-        }
-        const value = Number.parseInt(rawArgs[i + 1], 10);
-        if (Number.isNaN(value) || value <= 0) {
-          console.error('Count must be a positive integer.');
-          process.exit(1);
-        }
-        count = value;
-        i += 1;
-        continue;
-      }
-      if (arg.startsWith('--drop=')) {
-        const value = Number.parseInt(arg.slice('--drop='.length), 10);
-        if (Number.isNaN(value) || value < 0) {
-          console.error('Drop must be zero or a positive integer.');
-          process.exit(1);
-        }
-        drop = value;
-        continue;
-      }
-      if (arg === '--drop') {
-        if (i + 1 >= rawArgs.length) {
-          console.error('Expected value after --drop.');
-          process.exit(1);
-        }
-        const value = Number.parseInt(rawArgs[i + 1], 10);
-        if (Number.isNaN(value) || value < 0) {
-          console.error('Drop must be zero or a positive integer.');
-          process.exit(1);
-        }
-        drop = value;
-        i += 1;
-        continue;
-      }
-      if (arg.startsWith('--sort=')) {
-        const value = arg.slice('--sort='.length);
-        if (value === 'asc' || value === 'desc' || value === 'none') {
-          sort = value;
-        } else {
-          console.error('Sort must be one of: asc, desc, none.');
-          process.exit(1);
-        }
-        continue;
-      }
-      if (arg === '--sort') {
-        if (i + 1 >= rawArgs.length) {
-          console.error('Expected value after --sort.');
-          process.exit(1);
-        }
-        const value = rawArgs[i + 1];
-        if (value === 'asc' || value === 'desc' || value === 'none') {
-          sort = value;
-        } else {
-          console.error('Sort must be one of: asc, desc, none.');
-          process.exit(1);
-        }
-        i += 1;
-        continue;
-      }
 
       console.warn(`Ignoring unknown argument: ${arg}`);
     }
 
-    const { sets, details } = rollAbilityScores({ seed, count, drop, sort });
-    const sortLabel = sort ? sort : 'none';
+    if (advantage && disadvantage) {
+      console.error('Cannot roll with both advantage and disadvantage.');
+      process.exit(1);
+    }
 
-    console.log(`Ability Scores (4d6 drop lowest, seed=${seed ? `"${seed}"` : 'none'}, sort=${sortLabel})`);
-    console.log(`Sets: [${sets.join(', ')}]`);
-    const detailStrings = details
-      .map((rolls, index) => {
-        const total = sets[index];
-        return `[${rolls.join(',')}] -> ${total}`;
-      })
-      .join(', ');
-    console.log(`Details per stat: [${detailStrings}]`);
+    const advLabel = advantage ? ' with advantage' : disadvantage ? ' with disadvantage' : '';
+    console.log(`Rolling ${expression}${advLabel}...`);
+
+    const result = roll(expression, { advantage, disadvantage, seed });
+
+    console.log(`Rolls: [${result.rolls.join(', ')}] → total ${result.total}`);
     process.exit(0);
   }
 
-  if (subcommand === 'standard') {
-    console.log(`Standard Array: [${standardArray().join(', ')}]`);
-    process.exit(0);
+  if (command === 'character') {
+    handleCharacterCommand(rest);
+    return;
   }
 
-  if (subcommand === 'pointbuy') {
-    if (rawArgs.length === 0) {
-      console.error('Missing ability scores for point buy.');
+  if (command === 'encounter') {
+    await handleEncounterCommand(rest);
+    return;
+  }
+
+  if (command === 'monster') {
+    await handleMonsterCommand(rest);
+    return;
+  }
+
+  if (command === 'check' || command === 'save') {
+    handleCheckCommand(command, rest);
+    return;
+  }
+
+  if (command === 'attack') {
+    handleAttackCommand(rest);
+    return;
+  }
+
+  if (command === 'damage') {
+    handleDamageCommand(rest);
+    return;
+  }
+
+  if (command === 'resolve') {
+    handleResolveCommand(rest);
+    return;
+  }
+
+  if (command === 'weapon') {
+    handleWeaponCommand(rest);
+    return;
+  }
+
+  if (command === 'abilities') {
+    if (rest.length === 0) {
+      console.error('Missing abilities subcommand.');
       showUsage();
       process.exit(1);
     }
 
-    const scores = rawArgs[0]
-      .split(',')
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0)
-      .map((value) => Number.parseInt(value, 10));
+    const [subcommand, ...rawArgs] = rest;
 
-    const result = validatePointBuy(scores);
+    if (subcommand === 'roll') {
+      let seed: string | undefined;
+      let count: number | undefined;
+      let drop: number | undefined;
+      let sort: 'none' | 'asc' | 'desc' | undefined;
 
-    if (result.ok) {
-      console.log(`Point Buy: OK (cost ${result.cost} / budget ${result.budget})`);
-    } else {
-      console.log('Point Buy: INVALID');
-      result.errors.forEach((message) => {
-        console.log(`- ${message}`);
-      });
+      for (let i = 0; i < rawArgs.length; i += 1) {
+        const arg = rawArgs[i];
+        if (arg.startsWith('--seed=')) {
+          seed = arg.slice('--seed='.length);
+          continue;
+        }
+        if (arg === '--seed') {
+          if (i + 1 >= rawArgs.length) {
+            console.error('Expected value after --seed.');
+            process.exit(1);
+          }
+          seed = rawArgs[i + 1];
+          i += 1;
+          continue;
+        }
+        if (arg.startsWith('--count=')) {
+          const value = Number.parseInt(arg.slice('--count='.length), 10);
+          if (Number.isNaN(value) || value <= 0) {
+            console.error('Count must be a positive integer.');
+            process.exit(1);
+          }
+          count = value;
+          continue;
+        }
+        if (arg === '--count') {
+          if (i + 1 >= rawArgs.length) {
+            console.error('Expected value after --count.');
+            process.exit(1);
+          }
+          const value = Number.parseInt(rawArgs[i + 1], 10);
+          if (Number.isNaN(value) || value <= 0) {
+            console.error('Count must be a positive integer.');
+            process.exit(1);
+          }
+          count = value;
+          i += 1;
+          continue;
+        }
+        if (arg.startsWith('--drop=')) {
+          const value = Number.parseInt(arg.slice('--drop='.length), 10);
+          if (Number.isNaN(value) || value < 0) {
+            console.error('Drop must be zero or a positive integer.');
+            process.exit(1);
+          }
+          drop = value;
+          continue;
+        }
+        if (arg === '--drop') {
+          if (i + 1 >= rawArgs.length) {
+            console.error('Expected value after --drop.');
+            process.exit(1);
+          }
+          const value = Number.parseInt(rawArgs[i + 1], 10);
+          if (Number.isNaN(value) || value < 0) {
+            console.error('Drop must be zero or a positive integer.');
+            process.exit(1);
+          }
+          drop = value;
+          i += 1;
+          continue;
+        }
+        if (arg.startsWith('--sort=')) {
+          const value = arg.slice('--sort='.length);
+          if (value === 'asc' || value === 'desc' || value === 'none') {
+            sort = value;
+          } else {
+            console.error('Sort must be one of: asc, desc, none.');
+            process.exit(1);
+          }
+          continue;
+        }
+        if (arg === '--sort') {
+          if (i + 1 >= rawArgs.length) {
+            console.error('Expected value after --sort.');
+            process.exit(1);
+          }
+          const value = rawArgs[i + 1];
+          if (value === 'asc' || value === 'desc' || value === 'none') {
+            sort = value;
+          } else {
+            console.error('Sort must be one of: asc, desc, none.');
+            process.exit(1);
+          }
+          i += 1;
+          continue;
+        }
+
+        console.warn(`Ignoring unknown argument: ${arg}`);
+      }
+
+      const { sets, details } = rollAbilityScores({ seed, count, drop, sort });
+      const sortLabel = sort ? sort : 'none';
+
+      console.log(`Ability Scores (4d6 drop lowest, seed=${seed ? `"${seed}"` : 'none'}, sort=${sortLabel})`);
+      console.log(`Sets: [${sets.join(', ')}]`);
+      const detailStrings = details
+        .map((rolls, index) => {
+          const total = sets[index];
+          return `[${rolls.join(',')}] -> ${total}`;
+        })
+        .join(', ');
+      console.log(`Details per stat: [${detailStrings}]`);
+      process.exit(0);
     }
-    process.exit(result.ok ? 0 : 1);
+
+    if (subcommand === 'standard') {
+      console.log(`Standard Array: [${standardArray().join(', ')}]`);
+      process.exit(0);
+    }
+
+    if (subcommand === 'pointbuy') {
+      if (rawArgs.length === 0) {
+        console.error('Missing ability scores for point buy.');
+        showUsage();
+        process.exit(1);
+      }
+
+      const scores = rawArgs[0]
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+        .map((value) => Number.parseInt(value, 10));
+
+      const result = validatePointBuy(scores);
+
+      if (result.ok) {
+        console.log(`Point Buy: OK (cost ${result.cost} / budget ${result.budget})`);
+      } else {
+        console.log('Point Buy: INVALID');
+        result.errors.forEach((message) => {
+          console.log(`- ${message}`);
+        });
+      }
+      process.exit(result.ok ? 0 : 1);
+    }
+
+    console.error(`Unknown abilities subcommand: ${subcommand}`);
+    showUsage();
+    process.exit(1);
   }
 
-  console.error(`Unknown abilities subcommand: ${subcommand}`);
+  console.error(`Unknown command: ${command}`);
   showUsage();
   process.exit(1);
 }
 
-console.error(`Unknown command: ${command}`);
-showUsage();
-process.exit(1);
+void main().catch((error) => {
+  if (error instanceof Error) {
+    console.error(error.message);
+  } else {
+    console.error(String(error));
+  }
+  process.exit(1);
+});

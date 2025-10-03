@@ -8,6 +8,8 @@
     "paths": {
       "@grimengine/core": ["packages/core/src/index.ts"],
       "@grimengine/core/*": ["packages/core/src/*"],
+      "@grimengine/dnd5e-api": ["packages/adapters/dnd5e-api/src/index.ts"],
+      "@grimengine/dnd5e-api/*": ["packages/adapters/dnd5e-api/src/*"],
       "@grimengine/rules-srd": ["packages/adapters/rules-srd/src/index.ts"],
       "@grimengine/rules-srd/*": ["packages/adapters/rules-srd/src/*"]
     },

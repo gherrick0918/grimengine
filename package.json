@@ -27,6 +27,7 @@
   },
   "private": "true",
   "dependencies": {
+    "@grimengine/dnd5e-api": "workspace:*",
     "better-sqlite3": "^12.4.1"
   }
 }
