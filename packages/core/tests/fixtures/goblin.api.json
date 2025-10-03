@@ -1,0 +1,32 @@
+{
+  "name": "Goblin",
+  "armor_class": [
+    {
+      "type": "leather",
+      "value": 15
+    }
+  ],
+  "hit_points": 7,
+  "strength": 8,
+  "dexterity": 14,
+  "constitution": 10,
+  "intelligence": 10,
+  "wisdom": 8,
+  "charisma": 8,
+  "prof_bonus": 2,
+  "actions": [
+    {
+      "name": "Scimitar",
+      "attack_bonus": 4,
+      "damage": [
+        {
+          "damage_type": {
+            "name": "Slashing"
+          },
+          "damage_dice": "1d6",
+          "damage_bonus": 2
+        }
+      ]
+    }
+  ]
+}
