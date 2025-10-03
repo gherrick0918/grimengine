@@ -72,6 +72,8 @@ export {
   nextTurn,
   currentActor,
   actorAttack,
+  recordLoot,
+  recordXP,
 } from './encounter.js';
 export type {
   EncounterState,
@@ -83,3 +85,5 @@ export type {
   WeaponProfile,
   Side,
 } from './encounter.js';
+export { rollCoinsForCR, xpForCR, totalXP } from './loot.js';
+export type { CoinBundle, LootRoll } from './loot.js';

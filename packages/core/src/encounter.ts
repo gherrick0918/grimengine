@@ -2,6 +2,7 @@ import type { AbilityName } from './abilityScores.js';
 import type { ResolveAttackResult } from './combat.js';
 import { resolveAttack } from './combat.js';
 import { roll } from './dice.js';
+import type { CoinBundle } from './loot.js';
 
 export type Side = 'party' | 'foe';
 
@@ -49,6 +50,8 @@ export interface EncounterState {
   order: InitiativeEntry[];
   actors: Record<string, Actor>;
   defeated: Set<string>;
+  lootLog?: { coins: CoinBundle; items: string[]; note?: string }[];
+  xpLog?: { crs: string[]; total: number }[];
 }
 
 function cloneDefeated(set: Set<string>): Set<string> {
@@ -134,6 +137,8 @@ export function createEncounter(seed?: string): EncounterState {
     order: [],
     actors: {},
     defeated: new Set<string>(),
+    lootLog: [],
+    xpLog: [],
   };
 }
 
@@ -347,4 +352,26 @@ export function actorAttack(
   }
 
   return { state: nextState, attack: attackResult.attack, damage, defenderHp };
+}
+
+export function recordLoot(
+  state: EncounterState,
+  entry: { coins: CoinBundle; items: string[]; note?: string },
+): EncounterState {
+  const existing = state.lootLog ?? [];
+  const nextEntry = {
+    coins: { ...entry.coins },
+    items: [...entry.items],
+    note: entry.note,
+  };
+  return { ...state, lootLog: [...existing, nextEntry] };
+}
+
+export function recordXP(state: EncounterState, entry: { crs: string[]; total: number }): EncounterState {
+  const existing = state.xpLog ?? [];
+  const nextEntry = {
+    crs: [...entry.crs],
+    total: entry.total,
+  };
+  return { ...state, xpLog: [...existing, nextEntry] };
 }
