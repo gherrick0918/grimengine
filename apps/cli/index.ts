@@ -19,11 +19,15 @@ import {
   characterSkillCheck,
   characterWeaponAttack,
   setCharacterWeaponLookup,
+  setCharacterArmorData,
   isProficientSave,
   isProficientSkill,
   skillAbility,
   hasExpertise,
   passivePerception,
+  derivedAC,
+  derivedMaxHP,
+  derivedDefaultWeaponProfile,
   SKILL_ABILITY,
   createEncounter,
   addActor as addEncounterActor,
@@ -46,6 +50,7 @@ import {
   type SkillName,
 } from '@grimengine/core';
 import { WEAPONS, getWeaponByName } from '@grimengine/rules-srd/weapons';
+import { getArmorByName, SHIELD } from '@grimengine/rules-srd/armor';
 import { getMonsterByName } from '@grimengine/rules-srd/monsters';
 import { clearEncounter, loadEncounter, saveEncounter } from './encounterSession';
 import { clearCharacter, loadCharacter, saveCharacter } from './session';
@@ -70,6 +75,7 @@ function showUsage(): void {
   );
   console.log('  pnpm dev -- character load "<path.json>"');
   console.log('  pnpm dev -- character show');
+  console.log('  pnpm dev -- character derive');
   console.log('  pnpm dev -- character check <ability> [--dc <n>] [--adv|--dis] [--seed <value>] [--extraMod <n>]');
   console.log('  pnpm dev -- character save <ability> [--dc <n>] [--adv|--dis] [--seed <value>]');
   console.log('  pnpm dev -- character skill "<SkillName>" [--dc <n>] [--adv|--dis] [--seed <value>] [--extraMod <n>]');
@@ -99,6 +105,7 @@ function normalizeSkillName(raw: string): SkillName | undefined {
 }
 
 setCharacterWeaponLookup(getWeaponByName);
+setCharacterArmorData(getArmorByName, SHIELD.bonusAC);
 
 function requireEncounterState(): EncounterState {
   const encounter = loadEncounter();
@@ -135,6 +142,41 @@ function formatDamageExpression(base: string, modifier: number): string {
     return `${base}${modifier}`;
   }
   return base;
+}
+
+type DefaultWeaponSource = 'equipped' | 'fallback';
+
+interface DefaultWeaponInfo {
+  profile: WeaponProfile;
+  source: DefaultWeaponSource;
+}
+
+function resolveDefaultWeaponInfo(character: Character, mods: AbilityMods, pb: number): DefaultWeaponInfo {
+  const derived = derivedDefaultWeaponProfile(character);
+  if (derived) {
+    const profile: WeaponProfile = { ...derived };
+    return { profile, source: 'equipped' };
+  }
+
+  const strMod = mods.STR ?? 0;
+  const profile: WeaponProfile = {
+    name: 'Unarmed',
+    attackMod: strMod + pb,
+    damageExpr: formatDamageExpression('1d4', strMod),
+  };
+  return { profile, source: 'fallback' };
+}
+
+function formatDefaultWeapon(profile: WeaponProfile, source: DefaultWeaponSource): string {
+  const parts: string[] = [profile.name];
+  if (source === 'fallback') {
+    parts.push('(fallback)');
+  }
+  const details: string[] = [`to-hit ${formatModifier(profile.attackMod)}`, `damage ${profile.damageExpr}`];
+  if (profile.versatileExpr) {
+    details.push(`versatile ${profile.versatileExpr}`);
+  }
+  return `${parts.join(' ')} (${details.join('; ')})`;
 }
 
 function cloneWeaponProfile(profile: WeaponProfile): WeaponProfile {
@@ -212,25 +254,22 @@ function formatActorLine(state: EncounterState, actor: EncounterActor, currentId
 function buildPlayerActor(state: EncounterState, name: string, character: Character): PlayerActor {
   const mods = abilityMods(character.abilities);
   const pb = proficiencyBonusForLevel(character.level);
-  const dexMod = mods.DEX ?? 0;
-  const strMod = mods.STR ?? 0;
   const id = generateActorId(state, name);
+  const ac = derivedAC(character);
+  const maxHp = derivedMaxHP(character);
+  const { profile: defaultWeapon } = resolveDefaultWeaponInfo(character, mods, pb);
 
   return {
     id,
     name,
     side: 'party',
     type: 'pc',
-    ac: 10 + dexMod,
-    hp: 12,
-    maxHp: 12,
+    ac,
+    hp: maxHp,
+    maxHp,
     abilityMods: mods,
     proficiencyBonus: pb,
-    defaultWeapon: {
-      name: 'Unarmed',
-      attackMod: strMod + pb,
-      damageExpr: formatDamageExpression('1d4', strMod),
-    },
+    defaultWeapon,
   };
 }
 
@@ -315,6 +354,32 @@ function requireLoadedCharacter(): Character {
   return character;
 }
 
+function printDerivedStats(character: Character): void {
+  const mods = abilityMods(character.abilities);
+  const pb = proficiencyBonusForLevel(character.level);
+  const ac = derivedAC(character);
+  const maxHp = derivedMaxHP(character);
+  const hitDie = character.equipped?.hitDie ?? 'd8';
+  const hitDieLabel = character.equipped?.hitDie ? hitDie : `${hitDie} (default)`;
+  const weaponInfo = resolveDefaultWeaponInfo(character, mods, pb);
+
+  console.log('Derived:');
+  console.log(`  AC: ${ac}    Max HP: ${maxHp} (Hit Die ${hitDieLabel})`);
+  console.log(`  Default Weapon: ${formatDefaultWeapon(weaponInfo.profile, weaponInfo.source)}`);
+
+  if (!character.equipped?.hitDie) {
+    console.log('  Note: No hit die specified; defaulting to d8.');
+  }
+
+  if (weaponInfo.source === 'fallback') {
+    if (character.equipped?.weapon) {
+      console.log(`  Note: Equipped weapon "${character.equipped.weapon}" not found; using fallback Unarmed.`);
+    } else {
+      console.log('  Note: No weapon equipped; using fallback Unarmed.');
+    }
+  }
+}
+
 function handleCharacterLoadCommand(path: string | undefined): void {
   if (!path) {
     console.error('Missing character file path.');
@@ -351,6 +416,51 @@ function handleCharacterLoadCommand(path: string | undefined): void {
       },
       proficiencies: (data as { proficiencies?: Character['proficiencies'] }).proficiencies,
     };
+
+    const equippedRaw = (data as { equipped?: unknown }).equipped;
+    if (equippedRaw !== undefined) {
+      if (equippedRaw === null || typeof equippedRaw !== 'object' || Array.isArray(equippedRaw)) {
+        throw new Error('Character equipped section must be an object if provided.');
+      }
+
+      const equipped: NonNullable<Character['equipped']> = {};
+      const record = equippedRaw as Record<string, unknown>;
+
+      if (record.armor !== undefined) {
+        if (typeof record.armor !== 'string') {
+          throw new Error('Character equipped.armor must be a string when provided.');
+        }
+        equipped.armor = record.armor;
+      }
+
+      if (record.shield !== undefined) {
+        if (typeof record.shield !== 'boolean') {
+          throw new Error('Character equipped.shield must be a boolean when provided.');
+        }
+        equipped.shield = record.shield;
+      }
+
+      if (record.weapon !== undefined) {
+        if (typeof record.weapon !== 'string') {
+          throw new Error('Character equipped.weapon must be a string when provided.');
+        }
+        equipped.weapon = record.weapon;
+      }
+
+      if (record.hitDie !== undefined) {
+        if (typeof record.hitDie !== 'string') {
+          throw new Error('Character equipped.hitDie must be a string when provided.');
+        }
+        if (!['d6', 'd8', 'd10', 'd12'].includes(record.hitDie)) {
+          throw new Error('Character equipped.hitDie must be one of d6, d8, d10, or d12.');
+        }
+        equipped.hitDie = record.hitDie as NonNullable<Character['equipped']>['hitDie'];
+      }
+
+      if (Object.keys(equipped as Record<string, unknown>).length > 0) {
+        character.equipped = equipped;
+      }
+    }
 
     const pb = proficiencyBonusForLevel(character.level);
     saveCharacter(character);
@@ -394,6 +504,15 @@ function handleCharacterShowCommand(): void {
 
   console.log(`Passive Perception: ${passivePerception(character)}`);
 
+  console.log('');
+  printDerivedStats(character);
+
+  process.exit(0);
+}
+
+function handleCharacterDeriveCommand(): void {
+  const character = requireLoadedCharacter();
+  printDerivedStats(character);
   process.exit(0);
 }
 
@@ -872,6 +991,11 @@ function handleCharacterCommand(rawArgs: string[]): void {
 
   if (subcommand === 'show') {
     handleCharacterShowCommand();
+    return;
+  }
+
+  if (subcommand === 'derive') {
+    handleCharacterDeriveCommand();
     return;
   }
 

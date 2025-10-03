@@ -13,6 +13,9 @@
     "./weapons": "./src/weapons.ts"
   },
   "scripts": {
-    "test": "vitest"
+    "test": "vitest --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@grimengine/rules-srd": "workspace:*"
   }
 }

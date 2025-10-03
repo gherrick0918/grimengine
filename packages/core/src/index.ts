@@ -41,6 +41,9 @@ export {
   abilityMod,
   proficiencyBonusForLevel,
   abilityMods,
+  derivedAC,
+  derivedMaxHP,
+  derivedDefaultWeaponProfile,
   isProficientSave,
   isProficientSkill,
   skillAbility,
@@ -51,11 +54,13 @@ export {
   characterWeaponAttack,
   passivePerception,
   setCharacterWeaponLookup,
+  setCharacterArmorData,
 } from './character.js';
 export type {
   Character,
   CharacterAbilityScores,
   CharacterProficiencies,
+  Equipped,
   SkillName,
 } from './character.js';
 export { SKILL_ABILITY } from './skills.js';

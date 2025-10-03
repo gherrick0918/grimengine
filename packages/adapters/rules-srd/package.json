@@ -6,6 +6,7 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./weapons": "./src/weapons.ts"
+    "./weapons": "./src/weapons.ts",
+    "./armor": "./src/armor.ts"
   }
 }
