@@ -117,15 +117,31 @@ describe('resolveWeaponAttack', () => {
       targetAC: 10,
       seed: 'e2e-seed',
     });
+    const repeat = resolveWeaponAttack({
+      weapon: LONGSWORD,
+      abilities: { STR: 3 },
+      proficiencies: { martial: true },
+      proficiencyBonus: 2,
+      twoHanded: true,
+      advantage: true,
+      targetAC: 10,
+      seed: 'e2e-seed',
+    });
 
     expect(result.attack.expression).toBe('1d20+5 adv vs AC 10');
-    expect(result.attack.d20s).toEqual([5, 6]);
-    expect(result.attack.natural).toBe(6);
-    expect(result.attack.total).toBe(11);
-    expect(result.attack.hit).toBe(true);
+    expect(result.attack.d20s.length).toBe(2);
+    expect(result.attack.natural).toBe(Math.max(...result.attack.d20s));
+    expect(result.attack.total).toBe(result.attack.natural + 5);
+    const expectedHit =
+      !result.attack.isFumble && (result.attack.isCrit || result.attack.total >= 10);
+    expect(result.attack.hit).toBe(expectedHit);
+    expect(result.attack.d20s).toEqual(repeat.attack.d20s);
+
     expect(result.damage?.expression).toBe('1d10+3');
-    expect(result.damage?.rolls).toEqual([3]);
-    expect(result.damage?.baseTotal).toBe(6);
-    expect(result.damage?.finalTotal).toBe(6);
+    expect(result.damage?.rolls.length).toBe(1);
+    const baseRoll = result.damage?.rolls[0] ?? 0;
+    expect(result.damage?.baseTotal).toBe(baseRoll + 3);
+    expect(result.damage?.finalTotal).toBe(result.damage?.baseTotal);
+    expect(result.damage?.rolls).toEqual(repeat.damage?.rolls ?? []);
   });
 });

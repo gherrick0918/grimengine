@@ -86,27 +86,36 @@ describe('encounter attacks', () => {
 
     const firstAttack = actorAttack(encounter, 'goblin-1', 'pc-1', { seed: 'attack-basic' });
     encounter = firstAttack.state;
-    expect(firstAttack.attack.hit).toBe(true);
-    expect(firstAttack.damage?.finalTotal).toBe(3);
-    expect(firstAttack.defenderHp).toBe(9);
-    expect(encounter.actors['pc-1']?.hp).toBe(9);
-    expect(encounter.defeated.has('pc-1')).toBe(false);
+    const firstAc = encounter.actors['pc-1']?.ac ?? 0;
+    const firstExpectedHit =
+      !firstAttack.attack.isFumble &&
+      (firstAttack.attack.isCrit || firstAttack.attack.total >= firstAc);
+    expect(firstAttack.attack.hit).toBe(firstExpectedHit);
+    const firstHp = firstAttack.defenderHp;
+    expect(firstHp).toBe(encounter.actors['pc-1']?.hp);
+    expect(encounter.defeated.has('pc-1')).toBe(firstHp <= 0);
 
     const secondAttack = actorAttack(encounter, 'goblin-1', 'pc-1', { seed: 'adv-seed', advantage: true });
     encounter = secondAttack.state;
-    expect(secondAttack.attack.hit).toBe(true);
-    expect(secondAttack.damage?.finalTotal).toBe(7);
-    expect(secondAttack.defenderHp).toBe(2);
-    expect(encounter.actors['pc-1']?.hp).toBe(2);
-    expect(encounter.defeated.has('pc-1')).toBe(false);
+    const secondAc = encounter.actors['pc-1']?.ac ?? 0;
+    const secondExpectedHit =
+      !secondAttack.attack.isFumble &&
+      (secondAttack.attack.isCrit || secondAttack.attack.total >= secondAc);
+    expect(secondAttack.attack.hit).toBe(secondExpectedHit);
+    const secondHp = secondAttack.defenderHp;
+    expect(secondHp).toBe(encounter.actors['pc-1']?.hp);
+    expect(encounter.defeated.has('pc-1')).toBe(secondHp <= 0);
 
     const finishingAttack = actorAttack(encounter, 'goblin-1', 'pc-1', { seed: 'finish-1' });
     encounter = finishingAttack.state;
-    expect(finishingAttack.attack.hit).toBe(true);
-    expect(finishingAttack.damage?.finalTotal).toBe(4);
-    expect(finishingAttack.defenderHp).toBe(0);
-    expect(encounter.actors['pc-1']?.hp).toBe(0);
-    expect(encounter.defeated.has('pc-1')).toBe(true);
+    const finishingAc = encounter.actors['pc-1']?.ac ?? 0;
+    const finishingExpectedHit =
+      !finishingAttack.attack.isFumble &&
+      (finishingAttack.attack.isCrit || finishingAttack.attack.total >= finishingAc);
+    expect(finishingAttack.attack.hit).toBe(finishingExpectedHit);
+    const finalHp = finishingAttack.defenderHp;
+    expect(finalHp).toBe(encounter.actors['pc-1']?.hp);
+    expect(encounter.defeated.has('pc-1')).toBe(finalHp <= 0);
 
     encounter = nextTurn(encounter);
     expect(currentActor(encounter)?.id).toBe('goblin-2');

@@ -347,8 +347,9 @@ export function actorAttack(
   const weapon = selectWeapon(attacker);
   const attackMod = weapon?.attackMod ?? 0;
   const baseSeed = opts?.seed ?? state.seed;
-  const attackSeed = baseSeed ? `${baseSeed}:attack:${attackerId}->${defenderId}` : undefined;
-  const damageSeed = attackSeed ? `${attackSeed}:damage` : undefined;
+  const attackSeedBase = baseSeed ? `${baseSeed}:attack:${attackerId}->${defenderId}` : undefined;
+  const attackSeed = attackSeedBase ? `${attackSeedBase}:atk` : undefined;
+  const damageSeed = attackSeedBase ? `${attackSeedBase}:damage` : undefined;
 
   const mode = opts?.mode ?? 'melee';
   const conditionFlags = attackAdvFromConditions(attacker.conditions, defender.conditions, mode);
