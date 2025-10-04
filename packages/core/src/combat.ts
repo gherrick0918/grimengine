@@ -156,13 +156,20 @@ export function attackRoll(opts: AttackRollOptions): AttackRollResult {
   const proficiency = opts.proficient ? opts.proficiencyBonus ?? DEFAULT_PROFICIENCY_BONUS : 0;
   const totalModifier = abilityMod + proficiency;
 
-  const rollResult = roll('1d20', {
-    advantage: opts.advantage,
-    disadvantage: opts.disadvantage,
-    seed: opts.seed,
-  });
+  let d20s: number[];
+  if (opts.advantage || opts.disadvantage) {
+    const first = roll('1d20', {
+      seed: opts.seed ? `${opts.seed}:0` : undefined,
+    });
+    const second = roll('1d20', {
+      seed: opts.seed ? `${opts.seed}:1` : undefined,
+    });
+    d20s = [first.rolls[0], second.rolls[0]];
+  } else {
+    const rollResult = roll('1d20', { seed: opts.seed });
+    d20s = [...rollResult.rolls];
+  }
 
-  const d20s = [...rollResult.rolls];
   const natural = opts.advantage
     ? Math.max(...d20s)
     : opts.disadvantage

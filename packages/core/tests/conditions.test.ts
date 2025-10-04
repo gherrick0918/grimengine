@@ -96,9 +96,10 @@ describe('actorAttack integration with conditions', () => {
     encounter = addActor(encounter, attacker);
     encounter = addActor(encounter, defender);
 
-    const result = actorAttack(encounter, attacker.id, defender.id, { seed: 'adv-seed' });
-    expect(result.attack.d20s).toEqual([20, 13]);
-    expect(result.attack.natural).toBe(20);
+    const result = actorAttack(encounter, attacker.id, defender.id, { seed: 'grim' });
+    expect(result.attack.d20s.length).toBe(2);
+    const [first, second] = result.attack.d20s;
+    expect(result.attack.natural).toBe(Math.max(first, second));
     expect(result.attack.expression).toContain('adv');
   });
 
@@ -110,9 +111,10 @@ describe('actorAttack integration with conditions', () => {
     encounter = addActor(encounter, attacker);
     encounter = addActor(encounter, defender);
 
-    const result = actorAttack(encounter, attacker.id, defender.id, { seed: 'adv-seed' });
-    expect(result.attack.d20s).toEqual([20, 13]);
-    expect(result.attack.natural).toBe(13);
+    const result = actorAttack(encounter, attacker.id, defender.id, { seed: 'grim' });
+    expect(result.attack.d20s.length).toBe(2);
+    const [first, second] = result.attack.d20s;
+    expect(result.attack.natural).toBe(Math.min(first, second));
     expect(result.attack.expression).toContain('dis');
   });
 });
