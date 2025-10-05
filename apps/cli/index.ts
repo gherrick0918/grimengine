@@ -12,6 +12,8 @@ import {
   resolveAttack,
   chooseAttackAbility,
   resolveWeaponAttack,
+  castSpell,
+  chooseCastingAbility,
   abilityMods,
   proficiencyBonusForLevel,
   characterAbilityCheck,
@@ -58,6 +60,7 @@ import {
   type Character,
   type SkillName,
   type CoinBundle,
+  type CastResult,
   type Condition,
 } from '@grimengine/core';
 import { WEAPONS, getWeaponByName } from '@grimengine/rules-srd/weapons';
@@ -70,6 +73,13 @@ import {
   listCachedMonsters,
   readCachedMonster,
 } from '@grimengine/dnd5e-api/monsters.js';
+import {
+  getSpell as fetchSpell,
+  listCachedSpells as listCachedSpellsRaw,
+  readCachedSpell as readCachedSpellRaw,
+  spellCachePath,
+} from '@grimengine/dnd5e-api/spells.js';
+import type { NormalizedSpell } from '@grimengine/dnd5e-api/spells.js';
 import { clearEncounter, loadEncounter, saveEncounter } from './encounterSession';
 import { deleteEncounterByName, listEncounterSaves, loadEncounterByName, saveEncounterAs } from './enc-session';
 import { clearCharacter, loadCharacter, saveCharacter } from './session';
@@ -96,6 +106,9 @@ function showUsage(): void {
   console.log('  pnpm dev -- monster fetch "<name>"');
   console.log('  pnpm dev -- monster list');
   console.log('  pnpm dev -- monster show "<name>"');
+  console.log('  pnpm dev -- spell fetch "<name>"');
+  console.log('  pnpm dev -- spell list');
+  console.log('  pnpm dev -- spell show "<name>"');
   console.log('  pnpm dev -- character load "<path.json>"');
   console.log('  pnpm dev -- character load-name "<name>"');
   console.log('  pnpm dev -- character show');
@@ -107,6 +120,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- character skills');
   console.log('  pnpm dev -- character list');
   console.log('  pnpm dev -- character attack "<name>" [--twohanded] [--ac <n>] [--adv|--dis] [--seed <value>]');
+  console.log('  pnpm dev -- character cast "<spell>" [--ability INT|WIS|CHA] [--target "<id|name>"] [--seed <value>] [--melee|--ranged]');
   console.log('  pnpm dev -- character equip [--armor "<ArmorName>"] [--shield on|off] [--weapon "<WeaponName>"] [--hitdie d6|d8|d10|d12]');
   console.log('  pnpm dev -- character set [--level <n>]');
   console.log('  pnpm dev -- character add-xp <n>');
@@ -128,6 +142,157 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter loot [--seed <value>] [--items <n>] [--note "<text>"]');
   console.log('  pnpm dev -- encounter xp [--party <n>]');
   console.log('  pnpm dev -- encounter end');
+}
+
+function formatSpellLevel(level: number): string {
+  return level === 0 ? 'Cantrip' : `Level ${level}`;
+}
+
+function formatSpellMechanics(spell: NormalizedSpell): string {
+  const parts: string[] = [];
+  if (spell.attackType) {
+    parts.push(`${spell.attackType} spell attack`);
+  }
+  if (spell.save) {
+    const successLabel = spell.save.onSuccess === 'half' ? 'half on success' : 'none on success';
+    parts.push(`${spell.save.ability} save (${successLabel})`);
+  }
+  return parts.length > 0 ? parts.join(' | ') : '—';
+}
+
+function formatSpellDamage(spell: NormalizedSpell): string {
+  if (!spell.damageDice) {
+    return '—';
+  }
+  const typeLabel = spell.damageType ? ` ${spell.damageType.toLowerCase()}` : '';
+  return `${spell.damageDice}${typeLabel}`;
+}
+
+function printSpellDetails(spell: NormalizedSpell): void {
+  console.log(`${spell.name} — ${formatSpellLevel(spell.level)}`);
+  console.log(`Mechanic: ${formatSpellMechanics(spell)}`);
+  console.log(`Damage: ${formatSpellDamage(spell)}`);
+  if (spell.info?.range) {
+    console.log(`Range: ${spell.info.range}`);
+  }
+  if (spell.info?.casting_time) {
+    console.log(`Casting Time: ${spell.info.casting_time}`);
+  }
+  if (spell.info?.concentration || spell.info?.ritual) {
+    const tags: string[] = [];
+    if (spell.info.concentration) {
+      tags.push('Concentration');
+    }
+    if (spell.info.ritual) {
+      tags.push('Ritual');
+    }
+    console.log(`Tags: ${tags.join(', ')}`);
+  }
+}
+
+function cachedSpellDisplayName(slug: string): string {
+  try {
+    const data = readCachedSpellRaw(slug);
+    if (data && typeof data === 'object' && typeof (data as { name?: unknown }).name === 'string') {
+      return (data as { name: string }).name;
+    }
+  } catch {
+    // ignore
+  }
+  return slug;
+}
+
+async function handleSpellFetchCommand(name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    console.error('Spell name is required.');
+    process.exit(1);
+  }
+
+  try {
+    const spell = await fetchSpell(trimmed);
+    printSpellDetails(spell);
+    console.log(`Cached at ${spellCachePath(trimmed)}`);
+    process.exit(0);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`Failed to fetch spell: ${error.message}`);
+    } else {
+      console.error('Failed to fetch spell.');
+    }
+    process.exit(1);
+  }
+}
+
+function handleSpellListCommand(): void {
+  const slugs = listCachedSpellsRaw();
+  if (slugs.length === 0) {
+    console.log('No cached spells.');
+    process.exit(0);
+  }
+
+  console.log('Cached spells:');
+  slugs.forEach((slug) => {
+    console.log(`- ${cachedSpellDisplayName(slug)} (${slug})`);
+  });
+  process.exit(0);
+}
+
+async function handleSpellShowCommand(name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    console.error('Spell name is required.');
+    process.exit(1);
+  }
+
+  try {
+    const spell = await fetchSpell(trimmed);
+    printSpellDetails(spell);
+    process.exit(0);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`Failed to load spell: ${error.message}`);
+    } else {
+      console.error('Failed to load spell.');
+    }
+    process.exit(1);
+  }
+}
+
+async function handleSpellCommand(rawArgs: string[]): Promise<void> {
+  if (rawArgs.length === 0) {
+    console.error('Missing spell subcommand.');
+    showUsage();
+    process.exit(1);
+  }
+
+  const [subcommand, ...rest] = rawArgs;
+
+  if (subcommand === 'fetch') {
+    if (rest.length === 0) {
+      console.error('Missing spell name for fetch command.');
+      process.exit(1);
+    }
+    await handleSpellFetchCommand(rest[0]);
+    return;
+  }
+
+  if (subcommand === 'list') {
+    handleSpellListCommand();
+    return;
+  }
+
+  if (subcommand === 'show') {
+    if (rest.length === 0) {
+      console.error('Missing spell name for show command.');
+      process.exit(1);
+    }
+    await handleSpellShowCommand(rest[0]);
+    return;
+  }
+
+  console.error(`Unknown spell subcommand: ${subcommand}`);
+  process.exit(1);
 }
 
 const ABILITY_NAMES: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
@@ -327,6 +492,26 @@ function nextMonsterNumber(state: EncounterState, baseName: string): number {
     }
   });
   return highest + 1;
+}
+
+function applyEncounterDamage(state: EncounterState, actorId: string, amount: number): EncounterState {
+  if (amount <= 0) {
+    return state;
+  }
+  const actor = state.actors[actorId];
+  if (!actor) {
+    return state;
+  }
+  const nextHp = Math.max(0, actor.hp - amount);
+  const updated: EncounterActor = { ...actor, hp: nextHp };
+  const actors = { ...state.actors, [actorId]: updated };
+  const defeated = new Set(state.defeated);
+  if (nextHp === 0) {
+    defeated.add(actorId);
+  } else {
+    defeated.delete(actorId);
+  }
+  return { ...state, actors, defeated };
 }
 
 function formatActorLine(state: EncounterState, actor: EncounterActor, currentId: string | undefined): string {
@@ -814,6 +999,258 @@ function handleCharacterSkillCommand(rawArgs: string[]): void {
     console.log(`Result: ${result.total}`);
   }
 
+  process.exit(0);
+}
+
+async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
+  if (rawArgs.length === 0) {
+    console.error('Missing spell name for character cast.');
+    process.exit(1);
+  }
+
+  const [spellNameRaw, ...rest] = rawArgs;
+  const spellName = spellNameRaw.trim();
+  if (!spellName) {
+    console.error('Spell name cannot be empty.');
+    process.exit(1);
+  }
+
+  const character = requireLoadedCharacter();
+
+  let abilityOverride: 'INT' | 'WIS' | 'CHA' | undefined;
+  let targetIdentifier: string | undefined;
+  let seed: string | undefined;
+  let attackModeOverride: 'melee' | 'ranged' | undefined;
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    const lower = arg.toLowerCase();
+
+    if (lower === '--ability') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --ability.');
+        process.exit(1);
+      }
+      const value = rest[i + 1].toUpperCase();
+      if (value !== 'INT' && value !== 'WIS' && value !== 'CHA') {
+        console.error('Casting ability must be INT, WIS, or CHA.');
+        process.exit(1);
+      }
+      abilityOverride = value as 'INT' | 'WIS' | 'CHA';
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--ability=')) {
+      const value = arg.slice('--ability='.length).toUpperCase();
+      if (value !== 'INT' && value !== 'WIS' && value !== 'CHA') {
+        console.error('Casting ability must be INT, WIS, or CHA.');
+        process.exit(1);
+      }
+      abilityOverride = value as 'INT' | 'WIS' | 'CHA';
+      continue;
+    }
+
+    if (lower === '--target') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --target.');
+        process.exit(1);
+      }
+      targetIdentifier = rest[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--target=')) {
+      targetIdentifier = arg.slice('--target='.length);
+      continue;
+    }
+
+    if (lower === '--seed') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --seed.');
+        process.exit(1);
+      }
+      seed = rest[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--seed=')) {
+      seed = arg.slice('--seed='.length);
+      continue;
+    }
+
+    if (lower === '--melee') {
+      if (attackModeOverride && attackModeOverride !== 'melee') {
+        console.error('Cannot specify both --melee and --ranged.');
+        process.exit(1);
+      }
+      attackModeOverride = 'melee';
+      continue;
+    }
+
+    if (lower === '--ranged') {
+      if (attackModeOverride && attackModeOverride !== 'ranged') {
+        console.error('Cannot specify both --melee and --ranged.');
+        process.exit(1);
+      }
+      attackModeOverride = 'ranged';
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  const baseSpell = await fetchSpell(spellName);
+  const resolvedSpell: NormalizedSpell =
+    attackModeOverride && baseSpell.attackType !== attackModeOverride
+      ? { ...baseSpell, attackType: attackModeOverride }
+      : baseSpell;
+
+  const castingAbility = chooseCastingAbility(character, resolvedSpell, abilityOverride);
+  const casterMods = abilityMods(character.abilities);
+  const proficiencyBonus = proficiencyBonusForLevel(character.level);
+  const typeLabel = resolvedSpell.damageType ? ` ${resolvedSpell.damageType.toLowerCase()}` : '';
+
+  let encounter: EncounterState | undefined;
+  let target: EncounterActor | undefined;
+
+  if (resolvedSpell.attackType || targetIdentifier) {
+    encounter = requireEncounterState();
+  }
+
+  if (targetIdentifier) {
+    try {
+      target = findActorByIdentifier(encounter as EncounterState, targetIdentifier);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(error.message);
+      }
+      process.exit(1);
+    }
+  } else if (resolvedSpell.attackType) {
+    console.error('Spell attacks require a --target in the active encounter.');
+    process.exit(1);
+  }
+
+  const castResult = castSpell({
+    caster: character,
+    spell: resolvedSpell,
+    castingAbility,
+    targetAC: target?.ac,
+    seed,
+  });
+
+  const notes = castResult.notes ?? [];
+
+  if (castResult.kind === 'attack' && resolvedSpell.attackType) {
+    if (!encounter || !target) {
+      console.error('Target required for spell attack.');
+      process.exit(1);
+    }
+
+    const attack = castResult.attack;
+    if (!attack) {
+      console.error('Failed to resolve spell attack.');
+      process.exit(1);
+    }
+
+    const toHitMod = (casterMods[castingAbility] ?? 0) + proficiencyBonus;
+    console.log(
+      `Casting ${resolvedSpell.name} (${castingAbility} spell attack ${formatModifier(toHitMod)} vs AC ${target.ac}) on ${target.name}...`,
+    );
+    const outcome = attack.isCrit ? 'CRIT!' : attack.isFumble ? 'FUMBLE' : attack.hit ? 'HIT' : 'MISS';
+    console.log(`Attack: ${attack.expression}`);
+    const rollsLine = `Rolls: [${attack.rolls.join(', ')}] → natural ${attack.natural} → total ${attack.total}`;
+    console.log(outcome ? `${rollsLine} → ${outcome}` : rollsLine);
+
+    if (castResult.damage) {
+      console.log(`Damage: ${castResult.damage.expression} → ${castResult.damage.final}${typeLabel}`);
+    } else {
+      console.log('Damage: —');
+    }
+
+    let nextEncounter = encounter;
+    if (castResult.damage && (attack.hit || attack.isCrit)) {
+      nextEncounter = applyEncounterDamage(nextEncounter, target.id, castResult.damage.final);
+    }
+    saveEncounter(nextEncounter);
+
+    const updated = nextEncounter.actors[target.id] ?? target;
+    const status = nextEncounter.defeated.has(target.id) ? 'DEFEATED' : 'active';
+    console.log(`Target ${updated.name} now has ${formatHitPoints(updated)} HP (${status}).`);
+
+    notes.forEach((note) => console.log(`Note: ${note}`));
+    process.exit(0);
+  }
+
+  if (castResult.kind === 'save' && resolvedSpell.save) {
+    const dc = castResult.save?.dc ?? 0;
+    if (target) {
+      console.log(`Casting ${resolvedSpell.name} (${castingAbility} DC ${dc}) on ${target.name}...`);
+      const targetMod = target.abilityMods?.[resolvedSpell.save.ability] ?? 0;
+      const saveSeed = seed ? `${seed}:save` : undefined;
+      const saveResult = savingThrow({
+        ability: resolvedSpell.save.ability,
+        modifier: targetMod,
+        proficient: false,
+        dc,
+        seed: saveSeed,
+      });
+      const rollDisplay =
+        saveResult.rolls.length === 1 ? `${saveResult.rolls[0]}` : `[${saveResult.rolls.join(', ')}]`;
+      const modDisplay = targetMod !== 0 ? ` ${formatModifier(targetMod)}` : '';
+      const outcome = saveResult.success ? 'SUCCESS' : 'FAIL';
+      console.log(`Target ${resolvedSpell.save.ability} save: rolled ${rollDisplay}${modDisplay} = ${saveResult.total} → ${outcome}`);
+
+      let finalDamage = castResult.damage?.final ?? 0;
+      if (castResult.damage) {
+        if (saveResult.success) {
+          if (resolvedSpell.save.onSuccess === 'half') {
+            const halved = Math.floor(finalDamage / 2);
+            console.log(`Damage: ${castResult.damage.expression} → ${castResult.damage.final}${typeLabel} (halved to ${halved})`);
+            finalDamage = halved;
+          } else {
+            console.log(`Damage: ${castResult.damage.expression} → ${castResult.damage.final}${typeLabel} (negated)`);
+            finalDamage = 0;
+          }
+        } else {
+          console.log(`Damage: ${castResult.damage.expression} → ${castResult.damage.final}${typeLabel}`);
+        }
+      } else {
+        console.log('Damage: —');
+      }
+
+      let nextEncounter = encounter ?? requireEncounterState();
+      if (finalDamage > 0) {
+        nextEncounter = applyEncounterDamage(nextEncounter, target.id, finalDamage);
+      }
+      saveEncounter(nextEncounter);
+      const updated = nextEncounter.actors[target.id] ?? target;
+      const status = nextEncounter.defeated.has(updated.id) ? 'DEFEATED' : 'active';
+      console.log(`Target ${updated.name} now has ${formatHitPoints(updated)} HP (${status}).`);
+
+      notes.forEach((note) => console.log(`Note: ${note}`));
+      process.exit(0);
+    }
+
+    console.log(`Casting ${resolvedSpell.name} (${castingAbility} DC ${dc})...`);
+    if (castResult.damage) {
+      console.log(`Damage: ${castResult.damage.expression} → ${castResult.damage.final}${typeLabel}`);
+    } else {
+      console.log('Damage: —');
+    }
+    notes.forEach((note) => console.log(`Note: ${note}`));
+    process.exit(0);
+  }
+
+  console.log(`Casting ${resolvedSpell.name}...`);
+  if (notes.length > 0) {
+    notes.forEach((note) => console.log(`Note: ${note}`));
+  } else {
+    console.log('No attack or save mechanics available for this spell.');
+  }
   process.exit(0);
 }
 
@@ -1464,7 +1901,7 @@ function handleCharacterUnloadCommand(): void {
   process.exit(0);
 }
 
-function handleCharacterCommand(rawArgs: string[]): void {
+async function handleCharacterCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length === 0) {
     console.error('Missing character subcommand.');
     showUsage();
@@ -1505,6 +1942,11 @@ function handleCharacterCommand(rawArgs: string[]): void {
 
   if (subcommand === 'skills') {
     handleCharacterSkillsCommand();
+    return;
+  }
+
+  if (subcommand === 'cast') {
+    await handleCharacterCastCommand(rest);
     return;
   }
 
@@ -3275,12 +3717,17 @@ async function main(): Promise<void> {
   }
 
   if (command === 'character') {
-    handleCharacterCommand(rest);
+    await handleCharacterCommand(rest);
     return;
   }
 
   if (command === 'encounter') {
     await handleEncounterCommand(rest);
+    return;
+  }
+
+  if (command === 'spell') {
+    await handleSpellCommand(rest);
     return;
   }
 

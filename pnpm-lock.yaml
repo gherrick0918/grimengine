@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@grimengine/dnd5e-api':
+        specifier: workspace:*
+        version: link:packages/adapters/dnd5e-api
       better-sqlite3:
         specifier: ^12.4.1
         version: 12.4.1
@@ -42,6 +45,15 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.6.1)(tsx@4.20.6)
+
+  packages/adapters/dnd5e-api:
+    dependencies:
+      '@grimengine/core':
+        specifier: workspace:*
+        version: link:../../core
+      undici:
+        specifier: ^6.21.0
+        version: 6.22.0
 
   packages/adapters/rules-srd: {}
 
@@ -1280,6 +1292,10 @@ packages:
 
   undici-types@7.13.0:
     resolution: {integrity: sha512-Ov2Rr9Sx+fRgagJ5AX0qvItZG/JKKoBRAVITs1zk7IqZGTJUwgUr7qoYBpWwakpWilTZFM98rG/AFRocu10iIQ==}
+
+  undici@6.22.0:
+    resolution: {integrity: sha512-hU/10obOIu62MGYjdskASR3CUAiYaFTtC9Pa6vHyf//mAipSvSQg6od2CnJswq7fvzNS3zJhxoRkgNVaHurWKw==}
+    engines: {node: '>=18.17'}
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
@@ -2562,6 +2578,8 @@ snapshots:
   typescript@5.9.3: {}
 
   undici-types@7.13.0: {}
+
+  undici@6.22.0: {}
 
   uri-js@4.4.1:
     dependencies:

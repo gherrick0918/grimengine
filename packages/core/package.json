@@ -10,7 +10,8 @@
     "./abilityScores": "./src/abilityScores.ts",
     "./checks": "./src/checks.ts",
     "./combat": "./src/combat.ts",
-    "./weapons": "./src/weapons.ts"
+    "./weapons": "./src/weapons.ts",
+    "./spells": "./src/spells.ts"
   },
   "scripts": {
     "test": "vitest --config vitest.config.ts"

@@ -1,0 +1,35 @@
+{
+  "name": "Sacred Flame",
+  "level": 0,
+  "range": "60 feet",
+  "components": ["V", "S"],
+  "ritual": false,
+  "concentration": false,
+  "casting_time": "1 action",
+  "dc": {
+    "dc_type": {
+      "index": "dex",
+      "name": "DEX",
+      "url": "/api/ability-scores/dex"
+    },
+    "dc_success": "none"
+  },
+  "damage": {
+    "damage_type": {
+      "index": "radiant",
+      "name": "Radiant",
+      "url": "/api/damage-types/radiant"
+    },
+    "damage_at_character_level": {
+      "1": "1d8",
+      "5": "2d8"
+    }
+  },
+  "classes": [
+    {
+      "index": "cleric",
+      "name": "Cleric",
+      "url": "/api/classes/cleric"
+    }
+  ]
+}

@@ -18,6 +18,7 @@ export default defineConfig({
       '@grimengine/rules-srd/monsters': resolve(RULES_SRD_SRC, 'monsters.ts'),
       '@grimengine/dnd5e-api': resolve(DND5E_API_SRC, 'index.ts'),
       '@grimengine/dnd5e-api/monsters': resolve(DND5E_API_SRC, 'monsters.ts'),
+      '@grimengine/dnd5e-api/spells': resolve(DND5E_API_SRC, 'spells.ts'),
     },
   },
   test: {

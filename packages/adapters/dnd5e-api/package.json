@@ -6,7 +6,8 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./monsters": "./src/monsters.ts"
+    "./monsters": "./src/monsters.ts",
+    "./spells": "./src/spells.ts"
   },
   "dependencies": {
     "@grimengine/core": "workspace:*",

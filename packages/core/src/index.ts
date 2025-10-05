@@ -97,3 +97,5 @@ export type {
 } from './encounter.js';
 export { rollCoinsForCR, xpForCR, totalXP } from './loot.js';
 export type { CoinBundle, LootRoll } from './loot.js';
+export { castSpell, chooseCastingAbility, spellSaveDC } from './spells.js';
+export type { CastOptions, CastResult, NormalizedSpell } from './spells.js';
