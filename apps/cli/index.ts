@@ -45,6 +45,10 @@ import {
   hasCondition,
   recordLoot as encounterRecordLoot,
   recordXP as encounterRecordXP,
+  startConcentration,
+  endConcentration,
+  getConcentration,
+  concentrationDCFromDamage,
   rollCoinsForCR,
   totalXP,
   type EncounterState,
@@ -120,7 +124,9 @@ function showUsage(): void {
   console.log('  pnpm dev -- character skills');
   console.log('  pnpm dev -- character list');
   console.log('  pnpm dev -- character attack "<name>" [--twohanded] [--ac <n>] [--adv|--dis] [--seed <value>]');
-  console.log('  pnpm dev -- character cast "<spell>" [--ability INT|WIS|CHA] [--target "<id|name>"] [--seed <value>] [--melee|--ranged]');
+  console.log(
+    '  pnpm dev -- character cast "<spell>" [--ability INT|WIS|CHA] [--target "<id|name>"] [--seed <value>] [--melee|--ranged] [--slotLevel <n>]'
+  );
   console.log('  pnpm dev -- character equip [--armor "<ArmorName>"] [--shield on|off] [--weapon "<WeaponName>"] [--hitdie d6|d8|d10|d12]');
   console.log('  pnpm dev -- character set [--level <n>]');
   console.log('  pnpm dev -- character add-xp <n>');
@@ -136,6 +142,9 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter roll-init');
   console.log('  pnpm dev -- encounter next');
   console.log('  pnpm dev -- encounter attack "<attacker>" "<defender>" [--melee|--ranged] [--adv|--dis] [--twohanded] [--seed <value>]');
+  console.log('  pnpm dev -- encounter concentration start "<casterIdOrName>" "<Spell Name>" [--target "<id|name>"]');
+  console.log('  pnpm dev -- encounter concentration end "<casterIdOrName>"');
+  console.log('  pnpm dev -- encounter concentration check "<casterIdOrName>" <damage> [--seed <value>]');
   console.log('  pnpm dev -- encounter condition add "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition remove "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition list');
@@ -428,6 +437,34 @@ function findActorByIdentifier(state: EncounterState, identifier: string): Encou
   throw new Error(`Multiple actors match "${identifier}". Use the actor id instead.`);
 }
 
+function findPcActorByName(state: EncounterState, name: string): PlayerActor | undefined {
+  const target = name.trim().toLowerCase();
+  return Object.values(state.actors).find(
+    (actor): actor is PlayerActor => actor.type === 'pc' && actor.name.toLowerCase() === target,
+  );
+}
+
+function maybeStartPcConcentration(
+  state: EncounterState,
+  character: Character,
+  spell: NormalizedSpell,
+  target?: EncounterActor,
+): { state: EncounterState; caster: PlayerActor; entry: { casterId: string; spellName: string; targetId?: string } } | null {
+  const casterActor = findPcActorByName(state, character.name);
+  if (!casterActor) {
+    return null;
+  }
+
+  const entry = {
+    casterId: casterActor.id,
+    spellName: spell.name,
+    targetId: target?.id,
+  };
+
+  const nextState = startConcentration(state, entry);
+  return { state: nextState, caster: casterActor, entry };
+}
+
 function sortActorsForListing(state: EncounterState): EncounterActor[] {
   return Object.values(state.actors).sort((a, b) => {
     if (a.side !== b.side) {
@@ -521,7 +558,9 @@ function formatActorLine(state: EncounterState, actor: EncounterActor, currentId
   const initLabel = initiative ? ` init=${initiative.total} (roll ${initiative.rolled})` : '';
   const conditions = sortedConditions(actor.conditions);
   const conditionsLabel = conditions.length > 0 ? ` [conditions: ${conditions.join(', ')}]` : '';
-  return `${pointer} [${actor.side}] ${actor.name} (id=${actor.id}) AC ${actor.ac} HP ${formatHitPoints(actor)}${defeated}${conditionsLabel}${initLabel}`;
+  const concentrationEntry = state.concentration?.[actor.id];
+  const concentrationLabel = concentrationEntry ? ` [conc: ${concentrationEntry.spellName}]` : '';
+  return `${pointer} [${actor.side}] ${actor.name} (id=${actor.id}) AC ${actor.ac} HP ${formatHitPoints(actor)}${defeated}${concentrationLabel}${conditionsLabel}${initLabel}`;
 }
 
 function buildPlayerActor(state: EncounterState, name: string, character: Character): PlayerActor {
@@ -1021,6 +1060,7 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
   let targetIdentifier: string | undefined;
   let seed: string | undefined;
   let attackModeOverride: 'melee' | 'ranged' | undefined;
+  let slotLevel: number | undefined;
 
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
@@ -1063,6 +1103,43 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
 
     if (arg.startsWith('--target=')) {
       targetIdentifier = arg.slice('--target='.length);
+      continue;
+    }
+
+    if (lower === '--slotlevel' || lower === '--slot-level') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --slotLevel.');
+        process.exit(1);
+      }
+      const value = Number.parseInt(rest[i + 1], 10);
+      if (!Number.isFinite(value) || value < 1 || value > 9) {
+        console.error('--slotLevel must be an integer between 1 and 9.');
+        process.exit(1);
+      }
+      slotLevel = value;
+      i += 1;
+      continue;
+    }
+
+    if (lower.startsWith('--slotlevel=')) {
+      const rawValue = arg.slice(arg.indexOf('=') + 1);
+      const value = Number.parseInt(rawValue, 10);
+      if (!Number.isFinite(value) || value < 1 || value > 9) {
+        console.error('--slotLevel must be an integer between 1 and 9.');
+        process.exit(1);
+      }
+      slotLevel = value;
+      continue;
+    }
+
+    if (lower.startsWith('--slot-level=')) {
+      const rawValue = arg.slice(arg.indexOf('=') + 1);
+      const value = Number.parseInt(rawValue, 10);
+      if (!Number.isFinite(value) || value < 1 || value > 9) {
+        console.error('--slotLevel must be an integer between 1 and 9.');
+        process.exit(1);
+      }
+      slotLevel = value;
       continue;
     }
 
@@ -1139,6 +1216,7 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
     spell: resolvedSpell,
     castingAbility,
     targetAC: target?.ac,
+    slotLevel,
     seed,
   });
 
@@ -1174,6 +1252,16 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
     let nextEncounter = encounter;
     if (castResult.damage && (attack.hit || attack.isCrit)) {
       nextEncounter = applyEncounterDamage(nextEncounter, target.id, castResult.damage.final);
+    }
+    if (resolvedSpell.concentration) {
+      const concentrationResult = maybeStartPcConcentration(nextEncounter, character, resolvedSpell, target);
+      if (concentrationResult) {
+        nextEncounter = concentrationResult.state;
+        const targetLabel = concentrationResult.entry.targetId ?? 'none';
+        console.log(
+          `Concentration started on ${concentrationResult.entry.spellName} (caster: ${concentrationResult.caster.name}, target: ${targetLabel}).`,
+        );
+      }
     }
     saveEncounter(nextEncounter);
 
@@ -1226,6 +1314,16 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
       if (finalDamage > 0) {
         nextEncounter = applyEncounterDamage(nextEncounter, target.id, finalDamage);
       }
+      if (resolvedSpell.concentration) {
+        const concentrationResult = maybeStartPcConcentration(nextEncounter, character, resolvedSpell, target);
+        if (concentrationResult) {
+          nextEncounter = concentrationResult.state;
+          const targetLabel = concentrationResult.entry.targetId ?? 'none';
+          console.log(
+            `Concentration started on ${concentrationResult.entry.spellName} (caster: ${concentrationResult.caster.name}, target: ${targetLabel}).`,
+          );
+        }
+      }
       saveEncounter(nextEncounter);
       const updated = nextEncounter.actors[target.id] ?? target;
       const status = nextEncounter.defeated.has(updated.id) ? 'DEFEATED' : 'active';
@@ -1246,6 +1344,19 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
   }
 
   console.log(`Casting ${resolvedSpell.name}...`);
+  if (resolvedSpell.concentration) {
+    const activeEncounter = encounter ?? loadEncounter();
+    if (activeEncounter) {
+      const concentrationResult = maybeStartPcConcentration(activeEncounter, character, resolvedSpell, target);
+      if (concentrationResult) {
+        saveEncounter(concentrationResult.state);
+        const targetLabel = concentrationResult.entry.targetId ?? 'none';
+        console.log(
+          `Concentration started on ${concentrationResult.entry.spellName} (caster: ${concentrationResult.caster.name}, target: ${targetLabel}).`,
+        );
+      }
+    }
+  }
   if (notes.length > 0) {
     notes.forEach((note) => console.log(`Note: ${note}`));
   } else {
@@ -2115,6 +2226,235 @@ async function handleEncounterAddCommand(rawArgs: string[]): Promise<void> {
   process.exit(1);
 }
 
+function handleEncounterConcentrationStartCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error(
+      'Usage: pnpm dev -- encounter concentration start "<casterIdOrName>" "<Spell Name>" [--target "<id|name>"]',
+    );
+    process.exit(1);
+  }
+
+  const [casterIdentifierRaw, spellNameRaw, ...rest] = rawArgs;
+  const spellName = spellNameRaw.trim();
+  if (!spellName) {
+    console.error('Spell name cannot be empty.');
+    process.exit(1);
+  }
+
+  let targetIdentifier: string | undefined;
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    const lower = arg.toLowerCase();
+    if (lower === '--target') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --target.');
+        process.exit(1);
+      }
+      targetIdentifier = rest[i + 1];
+      i += 1;
+      continue;
+    }
+    if (lower.startsWith('--target=')) {
+      targetIdentifier = arg.slice(arg.indexOf('=') + 1);
+      continue;
+    }
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  const encounter = requireEncounterState();
+  let caster: EncounterActor;
+  try {
+    caster = findActorByIdentifier(encounter, casterIdentifierRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  let target: EncounterActor | undefined;
+  if (targetIdentifier) {
+    try {
+      target = findActorByIdentifier(encounter, targetIdentifier);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(error.message);
+      }
+      process.exit(1);
+      return;
+    }
+  }
+
+  const entry = {
+    casterId: caster.id,
+    spellName,
+    targetId: target?.id,
+  };
+
+  const nextState = startConcentration(encounter, entry);
+  saveEncounter(nextState);
+  const targetLabel = entry.targetId ?? 'none';
+  console.log(`Concentration started on ${spellName} (caster: ${caster.name}, target: ${targetLabel}).`);
+  process.exit(0);
+}
+
+function handleEncounterConcentrationEndCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- encounter concentration end "<casterIdOrName>"');
+    process.exit(1);
+  }
+
+  const [casterIdentifierRaw] = rawArgs;
+  const encounter = requireEncounterState();
+  let caster: EncounterActor;
+
+  try {
+    caster = findActorByIdentifier(encounter, casterIdentifierRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const existing = getConcentration(encounter, caster.id);
+  if (!existing) {
+    console.log(`${caster.name} has no active concentration.`);
+    process.exit(0);
+  }
+
+  const nextState = endConcentration(encounter, caster.id);
+  saveEncounter(nextState);
+  console.log(`Concentration on ${existing.spellName} ended for ${caster.name}.`);
+  process.exit(0);
+}
+
+function handleEncounterConcentrationCheckCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error('Usage: pnpm dev -- encounter concentration check "<casterIdOrName>" <damage> [--seed <value>]');
+    process.exit(1);
+  }
+
+  const [casterIdentifierRaw, damageRaw, ...rest] = rawArgs;
+  let seed: string | undefined;
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    const lower = arg.toLowerCase();
+    if (lower === '--seed') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --seed.');
+        process.exit(1);
+      }
+      seed = rest[i + 1];
+      i += 1;
+      continue;
+    }
+    if (lower.startsWith('--seed=')) {
+      seed = arg.slice(arg.indexOf('=') + 1);
+      continue;
+    }
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  const damage = Number.parseFloat(damageRaw);
+  if (!Number.isFinite(damage) || damage < 0) {
+    console.error('Damage must be a non-negative number.');
+    process.exit(1);
+  }
+
+  const encounter = requireEncounterState();
+  let caster: EncounterActor;
+  try {
+    caster = findActorByIdentifier(encounter, casterIdentifierRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const entry = getConcentration(encounter, caster.id);
+  if (!entry) {
+    console.error(`${caster.name} has no active concentration.`);
+    process.exit(1);
+  }
+
+  const dc = concentrationDCFromDamage(damage);
+  console.log(
+    `Concentration check for ${caster.name} (spell: ${entry.spellName}) — damage ${damage} → DC ${dc}.`,
+  );
+
+  let success = false;
+  let total = 0;
+  let rolls: number[] = [];
+  let expression: string;
+
+  const sessionCharacter = loadCharacter();
+  const matchesSession =
+    caster.type === 'pc' && sessionCharacter?.name?.toLowerCase() === caster.name.toLowerCase();
+
+  if (matchesSession) {
+    const result = characterSavingThrow(sessionCharacter!, 'CON', { dc, seed });
+    rolls = result.rolls;
+    total = result.total;
+    success = Boolean(result.success);
+    expression = result.expression;
+  } else {
+    const modifier = caster.abilityMods?.CON ?? 0;
+    const rollResult = roll('1d20', { seed });
+    rolls = rollResult.rolls;
+    total = rollResult.total + modifier;
+    success = total >= dc;
+    const modifierLabel = modifier !== 0 ? formatModifier(modifier) : '';
+    expression = `1d20${modifierLabel} vs DC ${dc}`;
+  }
+
+  const rollsLabel = rolls.length === 1 ? `${rolls[0]}` : `[${rolls.join(', ')}]`;
+  console.log(`Roll: ${expression}`);
+  console.log(`Result: ${rollsLabel} → total ${total} → ${success ? 'SUCCESS' : 'FAILURE'}`);
+
+  if (!success) {
+    const nextState = endConcentration(encounter, caster.id);
+    saveEncounter(nextState);
+    console.log(`Concentration broken on ${entry.spellName}.`);
+  } else {
+    console.log(`Concentration maintained on ${entry.spellName}.`);
+  }
+
+  process.exit(0);
+}
+
+function handleEncounterConcentrationCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Missing encounter concentration action.');
+    process.exit(1);
+  }
+
+  const [action, ...rest] = rawArgs;
+
+  if (action === 'start') {
+    handleEncounterConcentrationStartCommand(rest);
+    return;
+  }
+
+  if (action === 'end') {
+    handleEncounterConcentrationEndCommand(rest);
+    return;
+  }
+
+  if (action === 'check') {
+    handleEncounterConcentrationCheckCommand(rest);
+    return;
+  }
+
+  console.error(`Unknown encounter concentration action: ${action}`);
+  process.exit(1);
+}
+
 function requireConditionName(raw: string | undefined): Condition {
   if (!raw) {
     console.error(`Condition name is required. Expected one of: ${CONDITION_NAMES.join(', ')}`);
@@ -2716,6 +3056,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'xp') {
     handleEncounterXpCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'concentration') {
+    handleEncounterConcentrationCommand(rest);
     return;
   }
 
