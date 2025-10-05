@@ -45,6 +45,12 @@ export interface InitiativeEntry {
   total: number;
 }
 
+export interface ConcentrationEntry {
+  casterId: string;
+  spellName: string;
+  targetId?: string;
+}
+
 export interface EncounterState {
   id: string;
   seed?: string;
@@ -55,6 +61,7 @@ export interface EncounterState {
   defeated: Set<string>;
   lootLog?: { coins: CoinBundle; items: string[]; note?: string }[];
   xpLog?: { crs: string[]; total: number }[];
+  concentration?: Record<string, ConcentrationEntry>;
 }
 
 function cloneDefeated(set: Set<string>): Set<string> {
@@ -142,6 +149,7 @@ export function createEncounter(seed?: string): EncounterState {
     defeated: new Set<string>(),
     lootLog: [],
     xpLog: [],
+    concentration: {},
   };
 }
 
@@ -411,4 +419,33 @@ export function recordXP(state: EncounterState, entry: { crs: string[]; total: n
     total: entry.total,
   };
   return { ...state, xpLog: [...existing, nextEntry] };
+}
+
+export function startConcentration(state: EncounterState, entry: ConcentrationEntry): EncounterState {
+  const existing = state.concentration ?? {};
+  const concentration: Record<string, ConcentrationEntry> = {
+    ...existing,
+    [entry.casterId]: { ...entry },
+  };
+  return { ...state, concentration };
+}
+
+export function endConcentration(state: EncounterState, casterId: string): EncounterState {
+  if (!state.concentration || !state.concentration[casterId]) {
+    return state.concentration ? state : { ...state, concentration: {} };
+  }
+  const concentration = { ...state.concentration };
+  delete concentration[casterId];
+  return { ...state, concentration };
+}
+
+export function getConcentration(
+  state: EncounterState,
+  casterId: string,
+): ConcentrationEntry | undefined {
+  return state.concentration?.[casterId];
+}
+
+export function concentrationDCFromDamage(dmg: number): number {
+  return Math.max(10, Math.floor(dmg / 2));
 }

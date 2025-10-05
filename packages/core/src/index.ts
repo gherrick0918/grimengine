@@ -84,6 +84,10 @@ export {
   clearCondition,
   recordLoot,
   recordXP,
+  startConcentration,
+  endConcentration,
+  getConcentration,
+  concentrationDCFromDamage,
 } from './encounter.js';
 export type {
   EncounterState,
@@ -94,8 +98,9 @@ export type {
   InitiativeEntry,
   WeaponProfile,
   Side,
+  ConcentrationEntry,
 } from './encounter.js';
 export { rollCoinsForCR, xpForCR, totalXP } from './loot.js';
 export type { CoinBundle, LootRoll } from './loot.js';
-export { castSpell, chooseCastingAbility, spellSaveDC } from './spells.js';
+export { castSpell, chooseCastingAbility, spellSaveDC, diceForCharacterLevel, diceForSlotLevel } from './spells.js';
 export type { CastOptions, CastResult, NormalizedSpell } from './spells.js';

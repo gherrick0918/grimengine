@@ -105,13 +105,39 @@ export interface NormalizedSpell {
   save?: { ability: 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA'; onSuccess: 'half' | 'none' };
   damageDice?: string;
   damageType?: string;
+  damageAtCharacterLevel?: Record<number, string>;
+  damageAtSlotLevel?: Record<number, string>;
   dcAbility?: 'INT' | 'WIS' | 'CHA';
+  concentration?: boolean;
   info?: {
     range?: string;
     concentration?: boolean;
     ritual?: boolean;
     casting_time?: string;
   };
+}
+
+function normalizeScalingRecord(source: unknown): Record<number, string> | undefined {
+  if (!source || typeof source !== 'object') {
+    return undefined;
+  }
+
+  const entries = Object.entries(source as Record<string, unknown>)
+    .map(([key, value]) => {
+      const level = Number.parseInt(key, 10);
+      return Number.isFinite(level) && typeof value === 'string' ? ([level, value] as const) : undefined;
+    })
+    .filter((entry): entry is readonly [number, string] => Boolean(entry));
+
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  const record: Record<number, string> = {};
+  for (const [level, dice] of entries) {
+    record[level] = dice;
+  }
+  return record;
 }
 
 function extractDamageDice(api: any): { dice?: string; type?: string } {
@@ -196,6 +222,10 @@ export function normalizeSpell(api: any): NormalizedSpell {
     }
   }
 
+  const damageAtCharacterLevel = normalizeScalingRecord(api?.damage?.damage_at_character_level);
+  const damageAtSlotLevel = normalizeScalingRecord(api?.damage?.damage_at_slot_level);
+  const concentration = Boolean(api?.concentration);
+
   return {
     name: typeof api?.name === 'string' ? api.name : 'Unknown Spell',
     level,
@@ -203,10 +233,13 @@ export function normalizeSpell(api: any): NormalizedSpell {
     save,
     damageDice: damage.dice,
     damageType: damage.type,
+    damageAtCharacterLevel,
+    damageAtSlotLevel,
     dcAbility,
+    concentration,
     info: {
       range: typeof api?.range === 'string' ? api.range : undefined,
-      concentration: Boolean(api?.concentration),
+      concentration,
       ritual: Boolean(api?.ritual),
       casting_time: typeof api?.casting_time === 'string' ? api.casting_time : undefined,
     },

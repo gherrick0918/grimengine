@@ -7,7 +7,54 @@ export interface CastOptions {
   spell: NormalizedSpell;
   castingAbility?: 'INT' | 'WIS' | 'CHA';
   targetAC?: number;
+  slotLevel?: number;
   seed?: string;
+}
+
+function formatDamageExpression(dice: string, modifier: number): string {
+  if (modifier === 0) {
+    return dice;
+  }
+  return modifier > 0 ? `${dice}+${modifier}` : `${dice}${modifier}`;
+}
+
+export function diceForCharacterLevel(spell: NormalizedSpell, characterLevel: number): string | undefined {
+  const table = spell.damageAtCharacterLevel;
+  if (!table) {
+    return spell.damageDice;
+  }
+
+  const entries = Object.entries(table)
+    .map(([key, value]) => {
+      const level = Number.parseInt(key, 10);
+      return Number.isFinite(level) ? ({ level, dice: value } as const) : undefined;
+    })
+    .filter((entry): entry is { level: number; dice: string } => Boolean(entry))
+    .sort((a, b) => a.level - b.level);
+
+  let candidate: string | undefined;
+  for (const entry of entries) {
+    if (characterLevel >= entry.level) {
+      candidate = entry.dice;
+    } else {
+      break;
+    }
+  }
+
+  return candidate ?? spell.damageDice;
+}
+
+export function diceForSlotLevel(spell: NormalizedSpell, slotLevel?: number): string | undefined {
+  if (!slotLevel || slotLevel < 1) {
+    return spell.damageDice;
+  }
+  const table = spell.damageAtSlotLevel;
+  if (!table) {
+    return spell.damageDice;
+  }
+
+  const value = table[slotLevel];
+  return value ?? spell.damageDice;
 }
 
 export interface CastResult {
@@ -69,14 +116,20 @@ export function castSpell(opts: CastOptions): CastResult {
   const damageSeed = opts.seed ? `${opts.seed}:damage` : undefined;
 
   const damageExpression = (() => {
-    if (!spell.damageDice) {
+    const baseDice = (() => {
+      if (spell.level === 0) {
+        return diceForCharacterLevel(spell, caster.level);
+      }
+      if (typeof opts.slotLevel === 'number' && spell.damageAtSlotLevel) {
+        return diceForSlotLevel(spell, opts.slotLevel);
+      }
+      return spell.damageDice;
+    })();
+
+    if (!baseDice) {
       return undefined;
     }
-    const modifier = Math.max(0, abilityModifier);
-    if (modifier === 0) {
-      return spell.damageDice;
-    }
-    return `${spell.damageDice}+${modifier}`;
+    return formatDamageExpression(baseDice, abilityModifier);
   })();
 
   if (spell.attackType) {
