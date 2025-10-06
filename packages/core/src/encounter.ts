@@ -9,7 +9,7 @@ import {
 } from './conditions.js';
 import { abilityCheck } from './checks.js';
 import type { ResolveAttackResult } from './combat.js';
-import { resolveAttack, damageRoll } from './combat.js';
+import { resolveAttack } from './combat.js';
 import { roll } from './dice.js';
 import type { CoinBundle } from './loot.js';
 
@@ -20,8 +20,6 @@ export interface ActorTag {
   text: string;
   addedAtRound: number;
   expiresAtRound?: number;
-  expiresAtTimestamp?: number;
-  encounterClock?: boolean;
   note?: string;
   source?: string;
 }
@@ -64,23 +62,10 @@ export interface InitiativeEntry {
   total: number;
 }
 
-export interface ConcentrationTagLink {
-  actorId: string;
-  tagId: string;
-}
-
 export interface ConcentrationEntry {
   casterId: string;
-  spellId?: string;
   spellName: string;
   targetId?: string;
-  targetIds?: string[];
-  expiresAtRound?: number;
-  expiresAtTimestamp?: number;
-  encounterClock?: boolean;
-  durationLabel?: string;
-  note?: string;
-  linkedTags?: ConcentrationTagLink[];
 }
 
 export interface EncounterState {
@@ -229,19 +214,14 @@ function nextTagIdentifier(tags: ActorTag[] | undefined): string {
   return `t${index}`;
 }
 
-export interface AddActorTagResult {
-  state: EncounterState;
-  tag?: ActorTag;
-}
-
-export function addActorTagDetailed(
+export function addActorTag(
   state: EncounterState,
   actorId: string,
   tag: Omit<ActorTag, 'id' | 'addedAtRound'>,
-): AddActorTagResult {
+): EncounterState {
   const actor = state.actors[actorId];
   if (!actor) {
-    return { state };
+    return state;
   }
 
   const currentTags = actor.tags ? [...actor.tags] : [];
@@ -251,16 +231,7 @@ export function addActorTagDetailed(
     addedAtRound: state.round,
   };
   const updatedActor: Actor = { ...actor, tags: [...currentTags, newTag] };
-  const nextState = { ...state, actors: { ...state.actors, [actorId]: updatedActor } };
-  return { state: nextState, tag: newTag };
-}
-
-export function addActorTag(
-  state: EncounterState,
-  actorId: string,
-  tag: Omit<ActorTag, 'id' | 'addedAtRound'>,
-): EncounterState {
-  return addActorTagDetailed(state, actorId, tag).state;
+  return { ...state, actors: { ...state.actors, [actorId]: updatedActor } };
 }
 
 export function removeActorTag(state: EncounterState, actorId: string, tagId: string): EncounterState {
@@ -319,11 +290,7 @@ export function clearAllConcentration(state: EncounterState): EncounterState {
   if (!state.concentration || Object.keys(state.concentration).length === 0) {
     return state;
   }
-  let nextState: EncounterState = state;
-  Object.keys(state.concentration).forEach((casterId) => {
-    nextState = removeConcentration(nextState, casterId).state;
-  });
-  return { ...nextState, concentration: {} };
+  return { ...state, concentration: {} };
 }
 
 export function addActor(state: EncounterState, actor: Actor): EncounterState {
@@ -564,36 +531,9 @@ export function actorAttack(
 
   let nextState = state;
   let defenderHp = defender.hp;
-  let damage = attackResult.damage ? { ...attackResult.damage } : undefined;
+  const damage = attackResult.damage;
 
   if (attackResult.attack.isCrit || attackResult.attack.hit === true) {
-    const hmEntry = state.concentration?.[attackerId];
-    if (hmEntry?.spellId === 'hunters-mark' && hmEntry.targetId === defenderId) {
-      const hmSeed = damageSeed ? `${damageSeed}:hunters-mark` : undefined;
-      const hmRoll = damageRoll({ expression: '1d6', seed: hmSeed, crit: attackResult.attack.isCrit });
-      if (damage) {
-        const critRolls = attackResult.attack.isCrit
-          ? [...(damage.critRolls ?? []), ...(hmRoll.critRolls ?? [])]
-          : damage.critRolls;
-        damage = {
-          ...damage,
-          rolls: [...damage.rolls, ...hmRoll.rolls],
-          critRolls,
-          baseTotal: damage.baseTotal + hmRoll.baseTotal,
-          finalTotal: damage.finalTotal + hmRoll.finalTotal,
-          expression: `${damage.expression} + Hunter's Mark 1d6`,
-        };
-      } else {
-        damage = {
-          rolls: [...hmRoll.rolls],
-          critRolls: hmRoll.critRolls ? [...hmRoll.critRolls] : undefined,
-          baseTotal: hmRoll.baseTotal,
-          finalTotal: hmRoll.finalTotal,
-          expression: "Hunter's Mark 1d6",
-        };
-      }
-    }
-
     const damageTotal = damage?.finalTotal ?? 0;
     nextState = applyDamage(nextState, defenderId, damageTotal);
     defenderHp = nextState.actors[defenderId]?.hp ?? 0;
@@ -630,65 +570,20 @@ export function recordXP(state: EncounterState, entry: { crs: string[]; total: n
 
 export function startConcentration(state: EncounterState, entry: ConcentrationEntry): EncounterState {
   const existing = state.concentration ?? {};
-  const clone = {
-    ...entry,
-    linkedTags: entry.linkedTags?.map((link) => ({ ...link })),
-    targetIds: entry.targetIds ? [...entry.targetIds] : entry.targetId ? [entry.targetId] : undefined,
-  } satisfies ConcentrationEntry;
   const concentration: Record<string, ConcentrationEntry> = {
     ...existing,
-    [entry.casterId]: clone,
+    [entry.casterId]: { ...entry },
   };
   return { ...state, concentration };
 }
 
-export interface ConcentrationRemovalResult {
-  state: EncounterState;
-  entry?: ConcentrationEntry;
-  removedTags: { actorId: string; tagId: string; tag?: ActorTag }[];
-}
-
-export function removeConcentration(state: EncounterState, casterId: string): ConcentrationRemovalResult {
-  const existingEntry = state.concentration?.[casterId];
-  if (!existingEntry) {
-    if (!state.concentration) {
-      return { state: { ...state, concentration: {} }, removedTags: [] };
-    }
-    if (!(casterId in state.concentration)) {
-      return { state, removedTags: [] };
-    }
-  }
-
-  let nextState = state;
-  const removedTags: { actorId: string; tagId: string; tag?: ActorTag }[] = [];
-  if (existingEntry?.linkedTags) {
-    existingEntry.linkedTags.forEach((link) => {
-      const actor = nextState.actors[link.actorId];
-      if (!actor || !actor.tags) {
-        return;
-      }
-      const tag = actor.tags.find((item) => item.id === link.tagId);
-      if (!tag) {
-        return;
-      }
-      removedTags.push({ actorId: link.actorId, tagId: link.tagId, tag });
-      nextState = removeActorTag(nextState, link.actorId, link.tagId);
-    });
-  }
-
-  if (!nextState.concentration) {
-    nextState = { ...nextState, concentration: {} };
-  }
-
-  const concentration = { ...(nextState.concentration ?? {}) };
-  delete concentration[casterId];
-  nextState = { ...nextState, concentration };
-
-  return { state: nextState, entry: existingEntry, removedTags };
-}
-
 export function endConcentration(state: EncounterState, casterId: string): EncounterState {
-  return removeConcentration(state, casterId).state;
+  if (!state.concentration || !state.concentration[casterId]) {
+    return state.concentration ? state : { ...state, concentration: {} };
+  }
+  const concentration = { ...state.concentration };
+  delete concentration[casterId];
+  return { ...state, concentration };
 }
 
 export function getConcentration(
