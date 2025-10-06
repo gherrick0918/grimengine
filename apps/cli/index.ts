@@ -45,6 +45,9 @@ import {
   encounterAbilityCheck,
   setCondition as encounterSetCondition,
   clearCondition as encounterClearCondition,
+  addActorTag as encounterAddActorTag,
+  removeActorTag as encounterRemoveActorTag,
+  clearActorTags as encounterClearActorTags,
   clearAllConcentration,
   combineAdvantage,
   attackAdvFromConditions,
@@ -59,6 +62,7 @@ import {
   totalXP,
   type EncounterState,
   type Actor as EncounterActor,
+  type ActorTag,
   type PlayerActor,
   type MonsterActor,
   type WeaponProfile,
@@ -162,6 +166,10 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter condition add "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition remove "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition list');
+  console.log('  pnpm dev -- encounter note add "<actorIdOrName>" "<text>" [--rounds N] [--note "<detail>"] [--source "<who/what>"]');
+  console.log('  pnpm dev -- encounter note list');
+  console.log('  pnpm dev -- encounter note remove "<actorIdOrName>" <tagId>');
+  console.log('  pnpm dev -- encounter note clear "<actorIdOrName>"');
   console.log('  pnpm dev -- encounter loot [--seed <value>] [--items <n>] [--note "<text>"]');
   console.log('  pnpm dev -- encounter xp [--party <n>]');
   console.log('  pnpm dev -- encounter end');
@@ -554,6 +562,78 @@ function formatConditionList(set: EncounterActor['conditions'] | undefined): str
   return list.length > 0 ? list.join(', ') : '—';
 }
 
+function sortActorTags(tags: ActorTag[] | undefined): ActorTag[] {
+  if (!tags) {
+    return [];
+  }
+  return [...tags].sort((a, b) => {
+    if (a.addedAtRound !== b.addedAtRound) {
+      return a.addedAtRound - b.addedAtRound;
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function formatTagRange(tag: ActorTag): string | undefined {
+  if (typeof tag.expiresAtRound === 'number') {
+    return `R${tag.addedAtRound}→R${tag.expiresAtRound}`;
+  }
+  return undefined;
+}
+
+function formatTagSummary(tag: ActorTag): string {
+  const range = formatTagRange(tag);
+  let label = range ? `${tag.text} (${range})` : tag.text;
+  const extras: string[] = [];
+  if (tag.note) {
+    extras.push(`note: ${tag.note}`);
+  }
+  if (tag.source) {
+    extras.push(`source: ${tag.source}`);
+  }
+  if (extras.length > 0) {
+    label += ` — ${extras.join('; ')}`;
+  }
+  return label;
+}
+
+function formatTagDetail(tag: ActorTag): string {
+  const range = formatTagRange(tag);
+  const parts: string[] = [`${tag.id}: ${tag.text}`];
+  if (range) {
+    parts[0] = `${tag.id}: ${tag.text} (${range})`;
+  }
+  const extras: string[] = [];
+  if (tag.note) {
+    extras.push(`note: ${tag.note}`);
+  }
+  if (tag.source) {
+    extras.push(`source: ${tag.source}`);
+  }
+  if (extras.length > 0) {
+    parts.push(`(${extras.join('; ')})`);
+  }
+  return parts.join(' ');
+}
+
+function formatActorTags(tags: ActorTag[] | undefined): string {
+  const sorted = sortActorTags(tags);
+  if (sorted.length === 0) {
+    return '—';
+  }
+  return sorted.map((tag) => formatTagSummary(tag)).join(', ');
+}
+
+function collectActorTags(state: EncounterState): Record<string, ActorTag[]> {
+  const result: Record<string, ActorTag[]> = {};
+  Object.entries(state.actors).forEach(([actorId, actor]) => {
+    if (actor.tags && actor.tags.length > 0) {
+      result[actorId] = actor.tags.map((tag) => ({ ...tag }));
+    }
+  });
+  return result;
+}
+
 function describeConditionEffects(
   attacker: EncounterActor,
   defender: EncounterActor,
@@ -624,11 +704,13 @@ function formatActorLine(state: EncounterState, actor: EncounterActor, currentId
   const defeated = state.defeated.has(actor.id) ? ' [DEFEATED]' : '';
   const initiative = state.order.find((entry) => entry.actorId === actor.id);
   const initLabel = initiative ? ` init=${initiative.total} (roll ${initiative.rolled})` : '';
-  const conditions = sortedConditions(actor.conditions);
-  const conditionsLabel = conditions.length > 0 ? ` [conditions: ${conditions.join(', ')}]` : '';
   const concentrationEntry = state.concentration?.[actor.id];
   const concentrationLabel = concentrationEntry ? ` [conc: ${concentrationEntry.spellName}]` : '';
-  return `${pointer} [${actor.side}] ${actor.name} (id=${actor.id}) AC ${actor.ac} HP ${formatHitPoints(actor)}${defeated}${concentrationLabel}${conditionsLabel}${initLabel}`;
+  let line = `${pointer} [${actor.side}] ${actor.name} (id=${actor.id}) AC ${actor.ac} HP ${formatHitPoints(actor)}${defeated}${concentrationLabel}`;
+  line += ` — conditions: ${formatConditionList(actor.conditions)}`;
+  line += ` — tags: ${formatActorTags(actor.tags)}`;
+  line += initLabel;
+  return line;
 }
 
 function buildPlayerActor(state: EncounterState, name: string, character: Character): PlayerActor {
@@ -2773,6 +2855,229 @@ function handleEncounterConditionCommand(rawArgs: string[]): void {
   process.exit(1);
 }
 
+function handleEncounterNoteAddCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error('Usage: pnpm dev -- encounter note add "<actorIdOrName>" "<text>" [--rounds N] [--note "<detail>"] [--source "<who/what>"]');
+    process.exit(1);
+  }
+
+  const identifier = rawArgs[0]!;
+  const text = rawArgs[1]!;
+  const rest = rawArgs.slice(2);
+  if (!text.trim()) {
+    console.error('Tag text cannot be empty.');
+    process.exit(1);
+  }
+
+  let rounds: number | undefined;
+  let note: string | undefined;
+  let source: string | undefined;
+
+  try {
+    for (let i = 0; i < rest.length; i += 1) {
+      const arg = rest[i];
+      const lower = arg.toLowerCase();
+
+      if (arg.startsWith('--rounds=')) {
+        rounds = parsePositiveInteger(arg.slice('--rounds='.length), '--rounds');
+        continue;
+      }
+
+      if (lower === '--rounds') {
+        if (i + 1 >= rest.length) {
+          console.error('Expected value after --rounds.');
+          process.exit(1);
+        }
+        rounds = parsePositiveInteger(rest[i + 1], '--rounds');
+        i += 1;
+        continue;
+      }
+
+      if (arg.startsWith('--note=')) {
+        note = arg.slice('--note='.length);
+        continue;
+      }
+
+      if (lower === '--note') {
+        if (i + 1 >= rest.length) {
+          console.error('Expected value after --note.');
+          process.exit(1);
+        }
+        note = rest[i + 1];
+        i += 1;
+        continue;
+      }
+
+      if (arg.startsWith('--source=')) {
+        source = arg.slice('--source='.length);
+        continue;
+      }
+
+      if (lower === '--source') {
+        if (i + 1 >= rest.length) {
+          console.error('Expected value after --source.');
+          process.exit(1);
+        }
+        source = rest[i + 1];
+        i += 1;
+        continue;
+      }
+
+      console.warn(`Ignoring unknown argument: ${arg}`);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error('Failed to parse note options.');
+    }
+    process.exit(1);
+  }
+
+  let encounter = requireEncounterState();
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, identifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const expiresAtRound = typeof rounds === 'number' ? encounter.round + (rounds - 1) : undefined;
+  const existingIds = new Set((actor.tags ?? []).map((tag) => tag.id));
+  encounter = encounterAddActorTag(encounter, actor.id, { text, expiresAtRound, note, source });
+  saveEncounter(encounter);
+
+  const updated = encounter.actors[actor.id];
+  const added = updated?.tags?.find((tag) => !existingIds.has(tag.id));
+  if (!added) {
+    console.error('Failed to create tag.');
+    process.exit(1);
+  }
+
+  const expiryLabel = typeof added.expiresAtRound === 'number' ? ` (expires at round ${added.expiresAtRound})` : '';
+  console.log(`Added tag ${added.id} to ${actor.name} (id=${actor.id}): "${added.text}"${expiryLabel}.`);
+  process.exit(0);
+}
+
+function handleEncounterNoteListCommand(): void {
+  const encounter = requireEncounterState();
+  const actors = sortActorsForListing(encounter);
+
+  if (actors.length === 0) {
+    console.log('No actors in the encounter.');
+    process.exit(0);
+  }
+
+  console.log('Actor tags:');
+  actors.forEach((actor) => {
+    const tags = sortActorTags(actor.tags);
+    if (tags.length === 0) {
+      console.log(`${actor.name} (id=${actor.id}): —`);
+      return;
+    }
+    console.log(`${actor.name} (id=${actor.id}):`);
+    tags.forEach((tag) => {
+      console.log(`  - ${formatTagDetail(tag)}`);
+    });
+  });
+  process.exit(0);
+}
+
+function handleEncounterNoteRemoveCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error('Usage: pnpm dev -- encounter note remove "<actorIdOrName>" <tagId>');
+    process.exit(1);
+  }
+
+  const identifier = rawArgs[0]!;
+  const tagId = rawArgs[1]!;
+  let encounter = requireEncounterState();
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, identifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const hasTag = (actor.tags ?? []).some((tag) => tag.id === tagId);
+  if (!hasTag) {
+    console.error(`Tag ${tagId} not found for ${actor.name} (id=${actor.id}).`);
+    process.exit(1);
+  }
+
+  encounter = encounterRemoveActorTag(encounter, actor.id, tagId);
+  saveEncounter(encounter);
+  const updated = encounter.actors[actor.id];
+  console.log(`Removed tag ${tagId} from ${actor.name} (id=${actor.id}). Remaining tags: ${formatActorTags(updated?.tags)}.`);
+  process.exit(0);
+}
+
+function handleEncounterNoteClearCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 1) {
+    console.error('Usage: pnpm dev -- encounter note clear "<actorIdOrName>"');
+    process.exit(1);
+  }
+
+  const identifier = rawArgs[0]!;
+  let encounter = requireEncounterState();
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, identifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  if (!actor.tags || actor.tags.length === 0) {
+    console.log(`${actor.name} (id=${actor.id}) has no tags to clear.`);
+    process.exit(0);
+  }
+
+  encounter = encounterClearActorTags(encounter, actor.id);
+  saveEncounter(encounter);
+  console.log(`Cleared all tags for ${actor.name} (id=${actor.id}).`);
+  process.exit(0);
+}
+
+function handleEncounterNoteCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- encounter note <add|list|remove|clear> ...');
+    process.exit(1);
+  }
+
+  const [action, ...rest] = rawArgs;
+  if (action === 'add') {
+    handleEncounterNoteAddCommand(rest);
+    return;
+  }
+  if (action === 'list') {
+    handleEncounterNoteListCommand();
+    return;
+  }
+  if (action === 'remove') {
+    handleEncounterNoteRemoveCommand(rest);
+    return;
+  }
+  if (action === 'clear') {
+    handleEncounterNoteClearCommand(rest);
+    return;
+  }
+
+  console.error(`Unknown encounter note action: ${action}`);
+  process.exit(1);
+}
+
 function handleEncounterListCommand(): void {
   const encounter = requireEncounterState();
   const current = encounterCurrentActor(encounter);
@@ -2813,7 +3118,18 @@ function handleEncounterRollInitCommand(): void {
 
 function handleEncounterNextCommand(): void {
   let encounter = requireEncounterState();
+  const previousTags = collectActorTags(encounter);
   encounter = encounterNextTurn(encounter);
+  const expired: { actorId: string; tag: ActorTag }[] = [];
+  const currentRound = encounter.round;
+  Object.entries(previousTags).forEach(([actorId, tags]) => {
+    const remainingIds = new Set((encounter.actors[actorId]?.tags ?? []).map((tag) => tag.id));
+    tags.forEach((tag) => {
+      if (!remainingIds.has(tag.id) && typeof tag.expiresAtRound === 'number' && currentRound > tag.expiresAtRound) {
+        expired.push({ actorId, tag });
+      }
+    });
+  });
   saveEncounter(encounter);
 
   if (encounter.order.length === 0) {
@@ -2827,6 +3143,15 @@ function handleEncounterNextCommand(): void {
     console.log(`Current actor: ${actor.name} (id=${actor.id})`);
   } else {
     console.log('No active actor on this turn.');
+  }
+  if (expired.length > 0) {
+    const summary = expired
+      .map(({ actorId, tag }) => {
+        const name = encounter.actors[actorId]?.name ?? actorId;
+        return `${name}[${tag.id}: ${tag.text}]`;
+      })
+      .join(', ');
+    console.log(`Expired tags: ${summary}`);
   }
   process.exit(0);
 }
@@ -3452,6 +3777,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'condition') {
     handleEncounterConditionCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'note') {
+    handleEncounterNoteCommand(rest);
     return;
   }
 
