@@ -27,6 +27,10 @@ import {
   skillAbility,
   hasExpertise,
   passivePerception,
+  ensureSlots,
+  canSpendSlot,
+  setSlots,
+  restoreAllSlots,
   derivedAC,
   derivedMaxHP,
   derivedDefaultWeaponProfile,
@@ -41,6 +45,7 @@ import {
   encounterAbilityCheck,
   setCondition as encounterSetCondition,
   clearCondition as encounterClearCondition,
+  clearAllConcentration,
   combineAdvantage,
   attackAdvFromConditions,
   hasCondition,
@@ -63,6 +68,7 @@ import {
   type Proficiencies,
   type Weapon,
   type Character,
+  type SpellSlots,
   type SkillName,
   type CoinBundle,
   type CastResult,
@@ -124,6 +130,10 @@ function showUsage(): void {
   console.log('  pnpm dev -- character skill "<SkillName>" [--dc <n>] [--adv|--dis] [--seed <value>] [--extraMod <n>]');
   console.log('  pnpm dev -- character skills');
   console.log('  pnpm dev -- character list');
+  console.log('  pnpm dev -- character slots show');
+  console.log('  pnpm dev -- character slots set "<L=X,...>"');
+  console.log('  pnpm dev -- character rest long');
+  console.log('  pnpm dev -- character rest short');
   console.log('  pnpm dev -- character attack "<name>" [--twohanded] [--ac <n>] [--adv|--dis] [--seed <value>]');
   console.log(
     '  pnpm dev -- character cast "<spell>" [--ability INT|WIS|CHA] [--target "<id|name>"] [--seed <value>] [--melee|--ranged] [--slotLevel <n>]'
@@ -201,6 +211,60 @@ function printSpellDetails(spell: NormalizedSpell): void {
     }
     console.log(`Tags: ${tags.join(', ')}`);
   }
+}
+
+function printSlotTable(slots: SpellSlots): void {
+  const rows: Array<{ level: number; max: number; remaining: number }> = [];
+  for (let level = 1; level <= 9; level += 1) {
+    const max = slots.max[level] ?? 0;
+    const remaining = slots.remaining[level] ?? 0;
+    if (max > 0) {
+      rows.push({ level, max, remaining });
+    }
+  }
+
+  if (rows.length === 0) {
+    console.log('No spell slots configured.');
+    return;
+  }
+
+  console.log('Spell Slots:');
+  console.log('Level | Max | Remaining');
+  console.log('----- | --- | ---------');
+  rows.forEach(({ level, max, remaining }) => {
+    const levelLabel = level.toString().padStart(5, ' ');
+    const maxLabel = max.toString().padStart(3, ' ');
+    const remainingLabel = remaining.toString().padStart(9, ' ');
+    console.log(`${levelLabel} | ${maxLabel} | ${remainingLabel}`);
+  });
+}
+
+function parseSlotSpec(spec: string): Partial<Record<number, number>> {
+  const updates: Partial<Record<number, number>> = {};
+  const parts = spec.split(',');
+  for (const rawPart of parts) {
+    const part = rawPart.trim();
+    if (!part) {
+      continue;
+    }
+    const [levelRaw, valueRaw] = part.split('=');
+    if (valueRaw === undefined) {
+      throw new Error(`Invalid slot spec segment "${part}". Expected format L=X.`);
+    }
+    const level = Number.parseInt(levelRaw, 10);
+    const value = Number.parseInt(valueRaw, 10);
+    if (!Number.isFinite(level) || level < 1 || level > 9) {
+      throw new Error(`Invalid slot level "${levelRaw}". Levels must be 1-9.`);
+    }
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`Invalid slot value "${valueRaw}". Values must be non-negative integers.`);
+    }
+    updates[level] = value;
+  }
+  if (Object.keys(updates).length === 0) {
+    throw new Error('No slot assignments found. Provide values like "1=4,2=3".');
+  }
+  return updates;
 }
 
 function cachedSpellDisplayName(slug: string): string {
@@ -743,6 +807,49 @@ function requireLoadedCharacter(): Character {
   return character;
 }
 
+function handleCharacterSlotsCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- character slots <show|set> [...].');
+    process.exit(1);
+  }
+
+  const [action, ...rest] = rawArgs;
+  const character = requireLoadedCharacter();
+
+  if (action === 'show') {
+    const slots = ensureSlots(character);
+    printSlotTable(slots);
+    process.exit(0);
+  }
+
+  if (action === 'set') {
+    const spec = rest.join(' ').trim();
+    if (!spec) {
+      console.error('Usage: pnpm dev -- character slots set "1=4,2=2"');
+      process.exit(1);
+    }
+    let updates: Partial<Record<number, number>>;
+    try {
+      updates = parseSlotSpec(spec);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(error.message);
+      } else {
+        console.error('Failed to parse slot specification.');
+      }
+      process.exit(1);
+    }
+    setSlots(character, updates);
+    saveCharacter(character);
+    const slots = ensureSlots(character);
+    printSlotTable(slots);
+    process.exit(0);
+  }
+
+  console.error(`Unknown character slots action: ${action}`);
+  process.exit(1);
+}
+
 function formatShieldValue(value: boolean): string {
   return value ? 'on' : 'off';
 }
@@ -1219,6 +1326,21 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
     process.exit(1);
   }
 
+  let slotTracking: { level: number; before: number } | undefined;
+  if (resolvedSpell.level >= 1) {
+    const effectiveSlotLevel = Math.max(resolvedSpell.level, slotLevel ?? resolvedSpell.level);
+    if (effectiveSlotLevel > 9) {
+      console.error('Slot level must be between 1 and 9.');
+      process.exit(1);
+    }
+    if (!canSpendSlot(character, effectiveSlotLevel)) {
+      console.error(`No slot available at level ${effectiveSlotLevel}.`);
+      process.exit(1);
+    }
+    const slots = ensureSlots(character);
+    slotTracking = { level: effectiveSlotLevel, before: slots.remaining[effectiveSlotLevel] ?? 0 };
+  }
+
   const castResult = castSpell({
     caster: character,
     spell: resolvedSpell,
@@ -1229,6 +1351,26 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
   });
 
   const notes = castResult.notes ?? [];
+
+  let slotInfo: { level: number; remaining: number; max: number } | undefined;
+  if (slotTracking) {
+    const slots = ensureSlots(character);
+    const after = slots.remaining[slotTracking.level] ?? 0;
+    if (after !== slotTracking.before) {
+      slotInfo = {
+        level: slotTracking.level,
+        remaining: after,
+        max: slots.max[slotTracking.level] ?? 0,
+      };
+      saveCharacter(character);
+    }
+  }
+
+  const logSlotSpend = () => {
+    if (slotInfo) {
+      console.log(`(slot ${slotInfo.level} spent: remaining ${slotInfo.remaining}/${slotInfo.max})`);
+    }
+  };
 
   if (castResult.kind === 'attack' && resolvedSpell.attackType) {
     if (!encounter || !target) {
@@ -1277,6 +1419,7 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
     const status = nextEncounter.defeated.has(target.id) ? 'DEFEATED' : 'active';
     console.log(`Target ${updated.name} now has ${formatHitPoints(updated)} HP (${status}).`);
 
+    logSlotSpend();
     notes.forEach((note) => console.log(`Note: ${note}`));
     process.exit(0);
   }
@@ -1337,6 +1480,7 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
       const status = nextEncounter.defeated.has(updated.id) ? 'DEFEATED' : 'active';
       console.log(`Target ${updated.name} now has ${formatHitPoints(updated)} HP (${status}).`);
 
+      logSlotSpend();
       notes.forEach((note) => console.log(`Note: ${note}`));
       process.exit(0);
     }
@@ -1347,6 +1491,7 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
     } else {
       console.log('Damage: —');
     }
+    logSlotSpend();
     notes.forEach((note) => console.log(`Note: ${note}`));
     process.exit(0);
   }
@@ -1365,12 +1510,48 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
       }
     }
   }
+  logSlotSpend();
   if (notes.length > 0) {
     notes.forEach((note) => console.log(`Note: ${note}`));
   } else {
     console.log('No attack or save mechanics available for this spell.');
   }
   process.exit(0);
+}
+
+function handleCharacterRestCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- character rest <long|short>.');
+    process.exit(1);
+  }
+
+  const [restType] = rawArgs;
+
+  if (restType === 'long') {
+    const character = requireLoadedCharacter();
+    restoreAllSlots(character);
+    saveCharacter(character);
+
+    const encounter = loadEncounter();
+    if (encounter) {
+      const cleared = clearAllConcentration(encounter);
+      if (cleared !== encounter) {
+        saveEncounter(cleared);
+      }
+    }
+
+    console.log('Long rest complete: slots restored; concentration cleared.');
+    process.exit(0);
+  }
+
+  if (restType === 'short') {
+    requireLoadedCharacter();
+    console.log('Short rest: no slot recovery by default.');
+    process.exit(0);
+  }
+
+  console.error(`Unknown rest type: ${restType}`);
+  process.exit(1);
 }
 
 function handleCharacterCheckCommand(rawArgs: string[]): void {
@@ -2061,6 +2242,16 @@ async function handleCharacterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'skills') {
     handleCharacterSkillsCommand();
+    return;
+  }
+
+  if (subcommand === 'slots') {
+    handleCharacterSlotsCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'rest') {
+    handleCharacterRestCommand(rest);
     return;
   }
 

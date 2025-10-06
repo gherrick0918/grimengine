@@ -10,7 +10,7 @@ import {
   spellSaveDC,
   type NormalizedSpell,
 } from '../src/spells.js';
-import type { Character } from '../src/character.js';
+import { ensureSlots, setSlots, type Character } from '../src/character.js';
 import { normalizeSpell } from '../../adapters/dnd5e-api/src/spells.js';
 
 const sacredFlameFixturePath = fileURLToPath(new URL('./fixtures/sacred-flame.api.json', import.meta.url));
@@ -124,6 +124,8 @@ describe('spells', () => {
       },
     };
 
+    setSlots(caster, { 1: 2 });
+
     const spell: NormalizedSpell = {
       name: 'Radiant Burst',
       level: 1,
@@ -199,6 +201,9 @@ describe('spells', () => {
         CHA: 10,
       },
     };
+
+    setSlots(caster, { 1: 2, 2: 2, 3: 2 });
+    ensureSlots(caster);
 
     const result1 = castSpell({ caster, spell, castingAbility: 'WIS', slotLevel: 1, seed: 'slot-1' });
     const result3 = castSpell({ caster, spell, castingAbility: 'WIS', slotLevel: 3, seed: 'slot-3' });

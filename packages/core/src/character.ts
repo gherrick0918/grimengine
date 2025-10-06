@@ -54,6 +54,11 @@ export interface Equipped {
   hitDie?: 'd6' | 'd8' | 'd10' | 'd12';
 }
 
+export interface SpellSlots {
+  max: Record<number, number>;
+  remaining: Record<number, number>;
+}
+
 export interface Character {
   name: string;
   level: number;
@@ -61,6 +66,77 @@ export interface Character {
   abilities: CharacterAbilityScores;
   proficiencies?: CharacterProficiencies;
   equipped?: Equipped;
+  slots?: SpellSlots;
+}
+
+function createZeroedSlots(): Record<number, number> {
+  const zeros: Record<number, number> = {};
+  for (let level = 1; level <= 9; level += 1) {
+    zeros[level] = 0;
+  }
+  return zeros;
+}
+
+export function ensureSlots(character: Character): SpellSlots {
+  const zeros = createZeroedSlots();
+  const max = { ...zeros, ...(character.slots?.max ?? {}) };
+  const remaining = { ...zeros, ...(character.slots?.remaining ?? max) };
+  character.slots = { max, remaining };
+  return character.slots;
+}
+
+export function canSpendSlot(character: Character, level: number): boolean {
+  if (!Number.isFinite(level) || level < 1 || level > 9) {
+    return false;
+  }
+  const slots = ensureSlots(character);
+  return slots.remaining[level] > 0;
+}
+
+export function spendSlot(character: Character, level: number): boolean {
+  if (!Number.isFinite(level) || level < 1 || level > 9) {
+    return false;
+  }
+  const slots = ensureSlots(character);
+  if (slots.remaining[level] > 0) {
+    slots.remaining[level] -= 1;
+    return true;
+  }
+  return false;
+}
+
+export function restoreAllSlots(character: Character): void {
+  const slots = ensureSlots(character);
+  for (let level = 1; level <= 9; level += 1) {
+    slots.remaining[level] = slots.max[level];
+  }
+}
+
+export function setSlots(
+  character: Character,
+  maxByLevel: Partial<Record<number, number>>,
+): void {
+  const slots = ensureSlots(character);
+  for (const [key, value] of Object.entries(maxByLevel)) {
+    const level = Number.parseInt(key, 10);
+    if (!Number.isFinite(level) || level < 1 || level > 9) {
+      continue;
+    }
+    if (!Number.isFinite(value) || value === undefined) {
+      continue;
+    }
+    const clampedMax = Math.max(0, Math.trunc(value));
+    const previousMax = slots.max[level] ?? 0;
+    const previousRemaining = slots.remaining[level] ?? previousMax;
+    slots.max[level] = clampedMax;
+    if (previousRemaining > clampedMax) {
+      slots.remaining[level] = clampedMax;
+    } else if (previousRemaining === previousMax) {
+      slots.remaining[level] = clampedMax;
+    } else {
+      slots.remaining[level] = previousRemaining;
+    }
+  }
 }
 
 type WeaponLookup = (name: string) => Weapon | undefined;

@@ -63,6 +63,11 @@ export {
   passivePerception,
   setCharacterWeaponLookup,
   setCharacterArmorData,
+  ensureSlots,
+  canSpendSlot,
+  spendSlot,
+  restoreAllSlots,
+  setSlots,
 } from './character.js';
 export type {
   Character,
@@ -70,6 +75,7 @@ export type {
   CharacterProficiencies,
   Equipped,
   SkillName,
+  SpellSlots,
 } from './character.js';
 export { SKILL_ABILITY } from './skills.js';
 export {
@@ -83,6 +89,7 @@ export {
   encounterAbilityCheck,
   setCondition,
   clearCondition,
+  clearAllConcentration,
   recordLoot,
   recordXP,
   startConcentration,
