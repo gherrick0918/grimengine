@@ -49,6 +49,7 @@ import {
   removeActorTag as encounterRemoveActorTag,
   clearActorTags as encounterClearActorTags,
   clearAllConcentration,
+  removeConcentration as encounterRemoveConcentration,
   combineAdvantage,
   attackAdvFromConditions,
   hasCondition,
@@ -77,6 +78,12 @@ import {
   type CoinBundle,
   type CastResult,
   type Condition,
+  type ConcentrationEntry,
+  type ConcentrationRemovalResult,
+  type AppliedTagSummary,
+  BlessHelper,
+  HuntersMarkHelper,
+  type DurationSpec,
 } from '@grimengine/core';
 import { WEAPONS, getWeaponByName } from '@grimengine/rules-srd/weapons';
 import { getArmorByName, SHIELD } from '@grimengine/rules-srd/armor';
@@ -173,6 +180,10 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter loot [--seed <value>] [--items <n>] [--note "<text>"]');
   console.log('  pnpm dev -- encounter xp [--party <n>]');
   console.log('  pnpm dev -- encounter end');
+  console.log('  pnpm dev -- ge bless <casterIdOrName> --targets A,B [--level <n>] [--dur <value>] [--note "<text>"]');
+  console.log('  pnpm dev -- ge hm <casterIdOrName> --target <id|name> [--dur <value>] [--note "<text>"]');
+  console.log('  pnpm dev -- ge hm transfer <casterIdOrName> --to <id|name> [--note "<text>"]');
+  console.log('  pnpm dev -- ge concentration <list|break> ...');
 }
 
 function formatSpellLevel(level: number): string {
@@ -624,6 +635,130 @@ function formatActorTags(tags: ActorTag[] | undefined): string {
   return sorted.map((tag) => formatTagSummary(tag)).join(', ');
 }
 
+function pluralize(value: number, singular: string, pluralForm?: string): string {
+  return value === 1 ? singular : pluralForm ?? `${singular}s`;
+}
+
+function parseDurationOption(raw: string, fallback: DurationSpec): DurationSpec {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+
+  const match = trimmed.match(/^(\d+)([a-zA-Z]*)$/);
+  if (!match) {
+    throw new Error('Invalid duration format. Use values like 10r, 90s, 5m, or 1h.');
+  }
+
+  const value = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error('Duration must be a positive integer.');
+  }
+
+  const unitRaw = match[2].toLowerCase();
+  if (unitRaw === '' || unitRaw === 'r' || unitRaw === 'round' || unitRaw === 'rounds') {
+    return {
+      rounds: value,
+      encounterClock: true,
+      label: `${value} ${pluralize(value, 'round')}`,
+    };
+  }
+
+  if (['s', 'sec', 'secs', 'second', 'seconds'].includes(unitRaw)) {
+    return {
+      seconds: value,
+      encounterClock: false,
+      label: `${value} ${pluralize(value, 'second')}`,
+    };
+  }
+
+  if (['m', 'min', 'mins', 'minute', 'minutes'].includes(unitRaw)) {
+    const seconds = value * 60;
+    return {
+      seconds,
+      encounterClock: false,
+      label: `${value} ${pluralize(value, 'minute')}`,
+    };
+  }
+
+  if (['h', 'hr', 'hrs', 'hour', 'hours'].includes(unitRaw)) {
+    const seconds = value * 3600;
+    return {
+      seconds,
+      encounterClock: false,
+      label: `${value} ${pluralize(value, 'hour')}`,
+    };
+  }
+
+  throw new Error(`Unknown duration unit: ${unitRaw}`);
+}
+
+function formatSecondsApprox(seconds: number): string {
+  if (seconds <= 0) {
+    return 'expired';
+  }
+  if (seconds % 3600 === 0 && seconds >= 3600) {
+    const hours = Math.round(seconds / 3600);
+    return `${hours} ${pluralize(hours, 'hour')}`;
+  }
+  if (seconds % 60 === 0 && seconds >= 60) {
+    const minutes = Math.round(seconds / 60);
+    return `${minutes} ${pluralize(minutes, 'minute')}`;
+  }
+  return `${seconds} ${pluralize(seconds, 'second')}`;
+}
+
+function formatConcentrationRemaining(entry: ConcentrationEntry, encounter: EncounterState): string {
+  const parts: string[] = [];
+  if (typeof entry.expiresAtRound === 'number') {
+    const remaining = entry.expiresAtRound - encounter.round + 1;
+    if (remaining > 0) {
+      parts.push(`${remaining} ${pluralize(remaining, 'round')}`);
+    } else {
+      parts.push('expired');
+    }
+  }
+
+  if (typeof entry.expiresAtTimestamp === 'number') {
+    const secondsRemaining = Math.round((entry.expiresAtTimestamp - Date.now()) / 1000);
+    parts.push(formatSecondsApprox(Math.max(0, secondsRemaining)));
+  }
+
+  if (parts.length === 0) {
+    return '—';
+  }
+  return parts.join(' / ');
+}
+
+function describeTagApplications(label: string, apps: AppliedTagSummary[]): void {
+  if (apps.length === 0) {
+    return;
+  }
+  console.log(`${label}:`);
+  apps.forEach((entry) => {
+    console.log(`  - ${entry.actorName} (id=${entry.actorId}) → ${formatTagDetail(entry.tag)}`);
+  });
+}
+
+function parseTargetList(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function summarizeRemovedTags(removal: ConcentrationRemovalResult): AppliedTagSummary[] {
+  return removal.removedTags
+    .map((entry) => {
+      if (!entry.tag) {
+        return undefined;
+      }
+      const actorName = removal.state.actors[entry.actorId]?.name ?? entry.actorId;
+      return { actorId: entry.actorId, actorName, tag: entry.tag } satisfies AppliedTagSummary;
+    })
+    .filter((value): value is AppliedTagSummary => Boolean(value));
+}
+
 function collectActorTags(state: EncounterState): Record<string, ActorTag[]> {
   const result: Record<string, ActorTag[]> = {};
   Object.entries(state.actors).forEach(([actorId, actor]) => {
@@ -662,6 +797,591 @@ function describeConditionEffects(
   }
 
   return effects;
+}
+
+function handleGeBlessCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- ge bless <casterIdOrName> --targets A,B [--level <n>] [--dur <value>] [--note "<text>"]');
+    process.exit(1);
+  }
+
+  const casterIdentifier = rawArgs[0]!;
+  const rest = rawArgs.slice(1);
+
+  let targetsRaw: string | undefined;
+  let level: number | undefined;
+  let duration: DurationSpec | undefined;
+  let note: string | undefined;
+
+  try {
+    for (let i = 0; i < rest.length; i += 1) {
+      const arg = rest[i]!;
+      const lower = arg.toLowerCase();
+
+      if (arg.startsWith('--targets=')) {
+        targetsRaw = arg.slice('--targets='.length);
+        continue;
+      }
+      if (lower === '--targets') {
+        if (i + 1 >= rest.length) {
+          throw new Error('Expected value after --targets.');
+        }
+        targetsRaw = rest[i + 1]!;
+        i += 1;
+        continue;
+      }
+
+      if (arg.startsWith('--level=')) {
+        const value = Number.parseInt(arg.slice('--level='.length), 10);
+        if (!Number.isFinite(value) || value < 1) {
+          throw new Error('Bless level must be a positive integer.');
+        }
+        level = value;
+        continue;
+      }
+      if (lower === '--level') {
+        if (i + 1 >= rest.length) {
+          throw new Error('Expected value after --level.');
+        }
+        const value = Number.parseInt(rest[i + 1]!, 10);
+        if (!Number.isFinite(value) || value < 1) {
+          throw new Error('Bless level must be a positive integer.');
+        }
+        level = value;
+        i += 1;
+        continue;
+      }
+
+      if (arg.startsWith('--dur=')) {
+        duration = parseDurationOption(arg.slice('--dur='.length), duration ?? BlessHelper.defaultDuration());
+        continue;
+      }
+      if (lower === '--dur') {
+        if (i + 1 >= rest.length) {
+          throw new Error('Expected value after --dur.');
+        }
+        duration = parseDurationOption(rest[i + 1]!, duration ?? BlessHelper.defaultDuration());
+        i += 1;
+        continue;
+      }
+
+      if (arg.startsWith('--note=')) {
+        note = arg.slice('--note='.length);
+        continue;
+      }
+      if (lower === '--note') {
+        if (i + 1 >= rest.length) {
+          throw new Error('Expected value after --note.');
+        }
+        note = rest[i + 1]!;
+        i += 1;
+        continue;
+      }
+
+      console.warn(`Ignoring unknown argument: ${arg}`);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  if (!targetsRaw) {
+    console.error('Bless requires --targets with a comma-separated list of actors.');
+    process.exit(1);
+  }
+
+  const targetIdentifiers = parseTargetList(targetsRaw);
+  if (targetIdentifiers.length === 0) {
+    console.error('Bless requires at least one target.');
+    process.exit(1);
+  }
+
+  let encounter = requireEncounterState();
+  let caster: EncounterActor;
+  try {
+    caster = findActorByIdentifier(encounter, casterIdentifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const targets: EncounterActor[] = [];
+  for (const identifier of targetIdentifiers) {
+    try {
+      targets.push(findActorByIdentifier(encounter, identifier));
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(error.message);
+      }
+      process.exit(1);
+    }
+  }
+
+  const helper = new BlessHelper(encounter);
+  const durationSpec = duration ?? BlessHelper.defaultDuration();
+
+  let result;
+  try {
+    result = helper.cast({
+      casterId: caster.id,
+      targetIds: targets.map((actor) => actor.id),
+      slotLevel: level,
+      duration: durationSpec,
+      note,
+      breakReason: 'new-cast',
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  encounter = result.state;
+  saveEncounter(encounter);
+
+  console.log(`Bless cast by ${caster.name} (id=${caster.id}).`);
+  if (result.break) {
+    const previous = result.break.result.entry;
+    const label = previous ? previous.spellName : 'previous concentration';
+    const reason = result.break.reason ?? 'unspecified';
+    console.log(`Previous concentration broken: ${label} (reason=${reason}).`);
+    const removed = summarizeRemovedTags(result.break.result);
+    describeTagApplications('Removed tags', removed);
+  }
+
+  const targetLabel = result.targets.map((actor) => `${actor.name} (id=${actor.id})`).join(', ');
+  console.log(`Targets: ${targetLabel}`);
+  console.log(
+    `Duration: ${result.concentration.durationLabel ?? '—'} | Remaining: ${formatConcentrationRemaining(result.concentration, encounter)}`,
+  );
+  describeTagApplications('Effect tags', result.effectTags);
+  if (result.concentrationTag) {
+    describeTagApplications('Concentration tag', [result.concentrationTag]);
+  }
+  if (note) {
+    console.log(`Note: ${note}`);
+  }
+  process.exit(0);
+}
+
+function handleGeHuntersMarkCastCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- ge hm <casterIdOrName> --target <id|name> [--dur <value>] [--note "<text>"]');
+    process.exit(1);
+  }
+
+  const casterIdentifier = rawArgs[0]!;
+  const rest = rawArgs.slice(1);
+
+  let targetIdentifier: string | undefined;
+  let duration: DurationSpec | undefined;
+  let note: string | undefined;
+
+  try {
+    for (let i = 0; i < rest.length; i += 1) {
+      const arg = rest[i]!;
+      const lower = arg.toLowerCase();
+
+      if (arg.startsWith('--target=')) {
+        targetIdentifier = arg.slice('--target='.length);
+        continue;
+      }
+      if (lower === '--target') {
+        if (i + 1 >= rest.length) {
+          throw new Error('Expected value after --target.');
+        }
+        targetIdentifier = rest[i + 1]!;
+        i += 1;
+        continue;
+      }
+
+      if (arg.startsWith('--dur=')) {
+        duration = parseDurationOption(arg.slice('--dur='.length), duration ?? HuntersMarkHelper.defaultDuration());
+        continue;
+      }
+      if (lower === '--dur') {
+        if (i + 1 >= rest.length) {
+          throw new Error('Expected value after --dur.');
+        }
+        duration = parseDurationOption(rest[i + 1]!, duration ?? HuntersMarkHelper.defaultDuration());
+        i += 1;
+        continue;
+      }
+
+      if (arg.startsWith('--note=')) {
+        note = arg.slice('--note='.length);
+        continue;
+      }
+      if (lower === '--note') {
+        if (i + 1 >= rest.length) {
+          throw new Error('Expected value after --note.');
+        }
+        note = rest[i + 1]!;
+        i += 1;
+        continue;
+      }
+
+      console.warn(`Ignoring unknown argument: ${arg}`);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  if (!targetIdentifier) {
+    console.error("Hunter's Mark requires --target.");
+    process.exit(1);
+  }
+
+  let encounter = requireEncounterState();
+  let caster: EncounterActor;
+  let target: EncounterActor;
+  try {
+    caster = findActorByIdentifier(encounter, casterIdentifier);
+    target = findActorByIdentifier(encounter, targetIdentifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const helper = new HuntersMarkHelper(encounter);
+  const durationSpec = duration ?? HuntersMarkHelper.defaultDuration();
+
+  let result;
+  try {
+    result = helper.cast({
+      casterId: caster.id,
+      targetId: target.id,
+      duration: durationSpec,
+      note,
+      breakReason: 'new-cast',
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  encounter = result.state;
+  saveEncounter(encounter);
+
+  console.log(`Hunter's Mark cast by ${caster.name} (id=${caster.id}).`);
+  if (result.break) {
+    const previous = result.break.result.entry;
+    const label = previous ? previous.spellName : 'previous concentration';
+    const reason = result.break.reason ?? 'unspecified';
+    console.log(`Previous concentration broken: ${label} (reason=${reason}).`);
+    const removed = summarizeRemovedTags(result.break.result);
+    describeTagApplications('Removed tags', removed);
+  }
+
+  console.log(`Target marked: ${result.target.name} (id=${result.target.id})`);
+  console.log(
+    `Duration: ${result.concentration.durationLabel ?? '—'} | Remaining: ${formatConcentrationRemaining(result.concentration, encounter)}`,
+  );
+  describeTagApplications('Effect tags', result.effectTags);
+  if (result.concentrationTag) {
+    describeTagApplications('Concentration tag', [result.concentrationTag]);
+  }
+  if (note) {
+    console.log(`Note: ${note}`);
+  }
+  process.exit(0);
+}
+
+function handleGeHuntersMarkTransferCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- ge hm transfer <casterIdOrName> --to <id|name> [--note "<text>"]');
+    process.exit(1);
+  }
+
+  const casterIdentifier = rawArgs[0]!;
+  const rest = rawArgs.slice(1);
+
+  let targetIdentifier: string | undefined;
+  let note: string | undefined;
+
+  try {
+    for (let i = 0; i < rest.length; i += 1) {
+      const arg = rest[i]!;
+      const lower = arg.toLowerCase();
+
+      if (arg.startsWith('--to=')) {
+        targetIdentifier = arg.slice('--to='.length);
+        continue;
+      }
+      if (lower === '--to') {
+        if (i + 1 >= rest.length) {
+          throw new Error('Expected value after --to.');
+        }
+        targetIdentifier = rest[i + 1]!;
+        i += 1;
+        continue;
+      }
+
+      if (arg.startsWith('--note=')) {
+        note = arg.slice('--note='.length);
+        continue;
+      }
+      if (lower === '--note') {
+        if (i + 1 >= rest.length) {
+          throw new Error('Expected value after --note.');
+        }
+        note = rest[i + 1]!;
+        i += 1;
+        continue;
+      }
+
+      console.warn(`Ignoring unknown argument: ${arg}`);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  if (!targetIdentifier) {
+    console.error("Hunter's Mark transfer requires --to.");
+    process.exit(1);
+  }
+
+  let encounter = requireEncounterState();
+  let caster: EncounterActor;
+  let newTarget: EncounterActor;
+  try {
+    caster = findActorByIdentifier(encounter, casterIdentifier);
+    newTarget = findActorByIdentifier(encounter, targetIdentifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const helper = new HuntersMarkHelper(encounter);
+
+  let result;
+  try {
+    result = helper.transfer({ casterId: caster.id, targetId: newTarget.id, note });
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  encounter = result.state;
+  saveEncounter(encounter);
+
+  console.log(`Hunter's Mark transferred by ${caster.name} (id=${caster.id}).`);
+  if (result.previousTarget) {
+    console.log(`Previous target: ${result.previousTarget.name} (id=${result.previousTarget.id})`);
+  }
+  console.log(`New target: ${result.target.name} (id=${result.target.id})`);
+  console.log(
+    `Remaining duration: ${formatConcentrationRemaining(result.concentration, encounter)} (original ${result.concentration.durationLabel ?? '—'})`,
+  );
+  describeTagApplications('Removed tags', result.removedTags);
+  describeTagApplications('Effect tags', result.effectTags);
+  if (note) {
+    console.log(`Note: ${note}`);
+  }
+  process.exit(0);
+}
+
+function handleGeConcentrationListCommand(rawArgs: string[]): void {
+  let activeOnly = false;
+
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const arg = rawArgs[i]!.toLowerCase();
+    if (arg === '--active-only' || arg === '--active') {
+      activeOnly = true;
+      continue;
+    }
+    console.warn(`Ignoring unknown argument: ${rawArgs[i]}`);
+  }
+
+  const encounter = requireEncounterState();
+  const entries = Object.entries(encounter.concentration ?? {});
+  if (entries.length === 0) {
+    console.log('No active concentration.');
+    process.exit(0);
+  }
+
+  console.log('Concentration effects:');
+  entries.forEach(([casterId, entry]) => {
+    const caster = encounter.actors[casterId];
+    if (activeOnly && !caster) {
+      return;
+    }
+    const casterLabel = caster ? `${caster.name} (id=${caster.id})` : `id=${casterId}`;
+    const targets = (entry.targetIds ?? (entry.targetId ? [entry.targetId] : [])).map((targetId) => {
+      const actor = encounter.actors[targetId];
+      return actor ? `${actor.name} (id=${actor.id})` : targetId;
+    });
+    const targetLabel = targets.length > 0 ? targets.join(', ') : '—';
+    const remaining = formatConcentrationRemaining(entry, encounter);
+    console.log(`- ${casterLabel} → ${entry.spellName} | targets: ${targetLabel} | remaining: ${remaining}`);
+    if (entry.note) {
+      console.log(`    note: ${entry.note}`);
+    }
+  });
+  process.exit(0);
+}
+
+function handleGeConcentrationBreakCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- ge concentration break <casterIdOrName> [--reason <text>]');
+    process.exit(1);
+  }
+
+  const casterIdentifier = rawArgs[0]!;
+  const rest = rawArgs.slice(1);
+  let reason = 'manual';
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i]!;
+    const lower = arg.toLowerCase();
+    if (arg.startsWith('--reason=')) {
+      reason = arg.slice('--reason='.length);
+      continue;
+    }
+    if (lower === '--reason') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --reason.');
+        process.exit(1);
+      }
+      reason = rest[i + 1]!;
+      i += 1;
+      continue;
+    }
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  let encounter = requireEncounterState();
+  let caster: EncounterActor;
+  try {
+    caster = findActorByIdentifier(encounter, casterIdentifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const entry = getConcentration(encounter, caster.id);
+  if (!entry) {
+    console.error(`${caster.name} (id=${caster.id}) has no active concentration.`);
+    process.exit(1);
+  }
+
+  const removal = encounterRemoveConcentration(encounter, caster.id);
+  encounter = removal.state;
+  saveEncounter(encounter);
+
+  console.log(`Concentration on ${entry.spellName} broken for ${caster.name} (reason=${reason}).`);
+  const removed = summarizeRemovedTags(removal);
+  describeTagApplications('Removed tags', removed);
+  process.exit(0);
+}
+
+function handleGeConcentrationCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- ge concentration <list|break> ...');
+    process.exit(1);
+  }
+
+  const [action, ...rest] = rawArgs;
+  if (action === 'list') {
+    handleGeConcentrationListCommand(rest);
+    return;
+  }
+  if (action === 'break') {
+    handleGeConcentrationBreakCommand(rest);
+    return;
+  }
+
+  console.error(`Unknown ge concentration action: ${action}`);
+  process.exit(1);
+}
+
+function handleGeHuntersMarkCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    handleGeHuntersMarkCastCommand(rawArgs);
+    return;
+  }
+
+  const [sub, ...rest] = rawArgs;
+  if (sub === 'transfer') {
+    handleGeHuntersMarkTransferCommand(rest);
+    return;
+  }
+  if (sub === 'cast') {
+    handleGeHuntersMarkCastCommand(rest);
+    return;
+  }
+
+  handleGeHuntersMarkCastCommand(rawArgs);
+}
+
+function handleGeCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- ge <bless|hm|cast|concentration> ...');
+    process.exit(1);
+  }
+
+  const [subcommand, ...rest] = rawArgs;
+
+  if (subcommand === 'cast') {
+    if (rest.length === 0) {
+      console.error('Usage: pnpm dev -- ge cast <bless|hunters-mark> ...');
+      process.exit(1);
+    }
+    const [spell, ...spellArgs] = rest;
+    if (spell === 'bless') {
+      handleGeBlessCommand(spellArgs);
+      return;
+    }
+    if (spell === 'hunters-mark' || spell === 'hm') {
+      handleGeHuntersMarkCastCommand(spellArgs);
+      return;
+    }
+    console.error(`Unknown ge cast target: ${spell}`);
+    process.exit(1);
+  }
+
+  if (subcommand === 'bless') {
+    handleGeBlessCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'hm' || subcommand === 'hunters-mark') {
+    handleGeHuntersMarkCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'concentration') {
+    handleGeConcentrationCommand(rest);
+    return;
+  }
+
+  console.error(`Unknown ge subcommand: ${subcommand}`);
+  process.exit(1);
 }
 
 function nextMonsterNumber(state: EncounterState, baseName: string): number {
@@ -4722,6 +5442,11 @@ async function main(): Promise<void> {
   }
 
   const [command, ...rest] = args;
+
+  if (command === 'ge') {
+    handleGeCommand(rest);
+    return;
+  }
 
   if (command === 'roll') {
     if (rest.length === 0) {
