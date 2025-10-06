@@ -15,6 +15,15 @@ import type { CoinBundle } from './loot.js';
 
 export type Side = 'party' | 'foe';
 
+export interface ActorTag {
+  id: string;
+  text: string;
+  addedAtRound: number;
+  expiresAtRound?: number;
+  note?: string;
+  source?: string;
+}
+
 export interface ActorBase {
   id: string;
   name: string;
@@ -25,6 +34,7 @@ export interface ActorBase {
   abilityMods: Partial<Record<AbilityName, number>>;
   proficiencyBonus?: number;
   conditions?: ConditionSet;
+  tags?: ActorTag[];
 }
 
 export interface WeaponProfile {
@@ -195,6 +205,87 @@ export function createEncounter(seed?: string): EncounterState {
   };
 }
 
+function nextTagIdentifier(tags: ActorTag[] | undefined): string {
+  const existing = new Set((tags ?? []).map((tag) => tag.id));
+  let index = 1;
+  while (existing.has(`t${index}`)) {
+    index += 1;
+  }
+  return `t${index}`;
+}
+
+export function addActorTag(
+  state: EncounterState,
+  actorId: string,
+  tag: Omit<ActorTag, 'id' | 'addedAtRound'>,
+): EncounterState {
+  const actor = state.actors[actorId];
+  if (!actor) {
+    return state;
+  }
+
+  const currentTags = actor.tags ? [...actor.tags] : [];
+  const newTag: ActorTag = {
+    ...tag,
+    id: nextTagIdentifier(actor.tags),
+    addedAtRound: state.round,
+  };
+  const updatedActor: Actor = { ...actor, tags: [...currentTags, newTag] };
+  return { ...state, actors: { ...state.actors, [actorId]: updatedActor } };
+}
+
+export function removeActorTag(state: EncounterState, actorId: string, tagId: string): EncounterState {
+  const actor = state.actors[actorId];
+  if (!actor || !actor.tags || actor.tags.length === 0) {
+    return state;
+  }
+
+  const remaining = actor.tags.filter((tag) => tag.id !== tagId);
+  if (remaining.length === actor.tags.length) {
+    return state;
+  }
+
+  const updatedActor: Actor = { ...actor, tags: remaining };
+  return { ...state, actors: { ...state.actors, [actorId]: updatedActor } };
+}
+
+export function clearActorTags(state: EncounterState, actorId: string): EncounterState {
+  const actor = state.actors[actorId];
+  if (!actor || !actor.tags || actor.tags.length === 0) {
+    return state;
+  }
+
+  const updatedActor: Actor = { ...actor, tags: [] };
+  return { ...state, actors: { ...state.actors, [actorId]: updatedActor } };
+}
+
+export function expireActorTags(state: EncounterState): EncounterState {
+  let nextActors: Record<string, Actor> | null = null;
+  const { round } = state;
+
+  Object.entries(state.actors).forEach(([actorId, actor]) => {
+    if (!actor.tags || actor.tags.length === 0) {
+      return;
+    }
+    const remaining = actor.tags.filter(
+      (tag) => typeof tag.expiresAtRound !== 'number' || round <= tag.expiresAtRound,
+    );
+    if (remaining.length === actor.tags.length) {
+      return;
+    }
+    if (!nextActors) {
+      nextActors = { ...state.actors };
+    }
+    nextActors[actorId] = { ...actor, tags: remaining };
+  });
+
+  if (!nextActors) {
+    return state;
+  }
+
+  return { ...state, actors: nextActors };
+}
+
 export function clearAllConcentration(state: EncounterState): EncounterState {
   if (!state.concentration || Object.keys(state.concentration).length === 0) {
     return state;
@@ -304,7 +395,8 @@ export function nextTurn(state: EncounterState): EncounterState {
     round += 1;
   }
 
-  return { ...state, turnIndex, round };
+  const nextState: EncounterState = { ...state, turnIndex, round };
+  return expireActorTags(nextState);
 }
 
 export function currentActor(state: EncounterState): Actor | null {
