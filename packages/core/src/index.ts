@@ -80,6 +80,7 @@ export {
   nextTurn,
   currentActor,
   actorAttack,
+  encounterAbilityCheck,
   setCondition,
   clearCondition,
   recordLoot,
@@ -99,6 +100,7 @@ export type {
   WeaponProfile,
   Side,
   ConcentrationEntry,
+  EncounterCheckInput,
 } from './encounter.js';
 export { rollCoinsForCR, xpForCR, totalXP } from './loot.js';
 export type { CoinBundle, LootRoll } from './loot.js';

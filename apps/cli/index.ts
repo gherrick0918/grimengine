@@ -38,6 +38,7 @@ import {
   nextTurn as encounterNextTurn,
   currentActor as encounterCurrentActor,
   actorAttack as encounterActorAttack,
+  encounterAbilityCheck,
   setCondition as encounterSetCondition,
   clearCondition as encounterClearCondition,
   combineAdvantage,
@@ -141,6 +142,9 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter delete "<name>"');
   console.log('  pnpm dev -- encounter roll-init');
   console.log('  pnpm dev -- encounter next');
+  console.log(
+    '  pnpm dev -- encounter check "<actorIdOrName>" <ABILITY> [--dc <n>] [--skill "<SkillName>"] [--adv|--dis] [--seed <value>]',
+  );
   console.log('  pnpm dev -- encounter attack "<attacker>" "<defender>" [--melee|--ranged] [--adv|--dis] [--twohanded] [--seed <value>]');
   console.log('  pnpm dev -- encounter concentration start "<casterIdOrName>" "<Spell Name>" [--target "<id|name>"]');
   console.log('  pnpm dev -- encounter concentration end "<casterIdOrName>"');
@@ -1204,6 +1208,10 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
       if (error instanceof Error) {
         console.error(error.message);
       }
+      process.exit(1);
+    }
+    if (target && encounter && (encounter.defeated.has(target.id) || target.hp <= 0)) {
+      console.error(`${target.name} (id=${target.id}) is defeated. Choose an active target.`);
       process.exit(1);
     }
   } else if (resolvedSpell.attackType) {
@@ -2714,6 +2722,178 @@ function handleEncounterDeleteCommand(rawArgs: string[]): void {
   process.exit(0);
 }
 
+function handleEncounterCheckCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error(
+      'Usage: pnpm dev -- encounter check "<actorIdOrName>" <ABILITY> [--dc <n>] [--skill "<SkillName>"] [--adv|--dis] [--seed <value>]',
+    );
+    process.exit(1);
+  }
+
+  const [identifierRaw, abilityRaw, ...rest] = rawArgs;
+  const abilityUpper = abilityRaw.toUpperCase();
+  if (!isAbilityName(abilityUpper)) {
+    console.error(`Invalid ability name: ${abilityRaw}`);
+    process.exit(1);
+  }
+
+  let dc: number | undefined;
+  let skill: SkillName | undefined;
+  let advantage = false;
+  let disadvantage = false;
+  let seed: string | undefined;
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    const lower = arg.toLowerCase();
+
+    if (lower === '--dc') {
+      dc = parseSignedInteger(rest[i + 1], '--dc');
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--dc=')) {
+      dc = parseSignedInteger(arg.slice('--dc='.length), '--dc');
+      continue;
+    }
+
+    if (lower === '--skill') {
+      const value = rest[i + 1];
+      if (value === undefined) {
+        console.error('Expected value after --skill.');
+        process.exit(1);
+      }
+      const parsed = normalizeSkillName(value);
+      if (!parsed) {
+        console.error(`Unknown skill: ${value}`);
+        process.exit(1);
+      }
+      skill = parsed;
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--skill=')) {
+      const value = arg.slice('--skill='.length);
+      const parsed = normalizeSkillName(value);
+      if (!parsed) {
+        console.error(`Unknown skill: ${value}`);
+        process.exit(1);
+      }
+      skill = parsed;
+      continue;
+    }
+
+    if (lower === '--adv' || lower === '--advantage') {
+      advantage = true;
+      continue;
+    }
+
+    if (lower === '--dis' || lower === '--disadvantage' || lower === '--disadv') {
+      disadvantage = true;
+      continue;
+    }
+
+    if (lower === '--seed') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --seed.');
+        process.exit(1);
+      }
+      seed = rest[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--seed=')) {
+      seed = arg.slice('--seed='.length);
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  if (advantage && disadvantage) {
+    console.error('Cannot roll with both advantage and disadvantage.');
+    process.exit(1);
+  }
+
+  const encounter = requireEncounterState();
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, identifierRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const ability = abilityUpper as AbilityName;
+  let abilityUsed: AbilityName = ability;
+  let skillUsed: SkillName | undefined;
+  if (skill) {
+    abilityUsed = skillAbility(skill);
+    skillUsed = skill;
+  }
+
+  const sessionCharacter = loadCharacter();
+  const matchesSession =
+    actor.type === 'pc' &&
+    sessionCharacter?.name &&
+    sessionCharacter.name.toLowerCase() === actor.name.toLowerCase();
+
+  let baseMod = actor.abilityMods?.[abilityUsed] ?? 0;
+
+  if (matchesSession) {
+    const mods = abilityMods(sessionCharacter!.abilities);
+    baseMod = mods[abilityUsed] ?? 0;
+    if (skillUsed) {
+      const pb = proficiencyBonusForLevel(sessionCharacter!.level);
+      const proficient = isProficientSkill(sessionCharacter!, skillUsed);
+      const expertise = hasExpertise(sessionCharacter!, skillUsed);
+      if (proficient) {
+        baseMod += expertise ? pb * 2 : pb;
+      }
+    }
+  }
+
+  const conditionFlags = hasCondition(actor.conditions, 'poisoned') ? { disadvantage: true } : {};
+  const combinedFlags = combineAdvantage({ advantage, disadvantage }, conditionFlags);
+  const conditionNotes: string[] = [];
+  if (conditionFlags.disadvantage && combinedFlags.disadvantage) {
+    conditionNotes.push('disadvantage from poisoned');
+  }
+
+  const result = encounterAbilityCheck(encounter, {
+    actorId: actor.id,
+    ability: abilityUsed,
+    baseMod,
+    dc,
+    advantage,
+    disadvantage,
+    seed,
+  });
+
+  const skillSummary = skillUsed ? ` [skill: ${skillUsed} (${skillAbility(skillUsed)})]` : '';
+  const dcLabel = typeof dc === 'number' ? ` vs DC ${dc}` : '';
+  console.log(`Check: ${actor.name} ${abilityUsed}${skillSummary}${dcLabel}`);
+
+  const rollsLabel = `[${result.rolls.join(', ')}]`;
+  let resultLine = `Rolls: ${rollsLabel} → total ${result.total}`;
+  if (typeof result.success === 'boolean') {
+    resultLine += ` → ${result.success ? 'SUCCESS' : 'FAILURE'}`;
+  }
+  console.log(resultLine);
+
+  if (conditionNotes.length > 0) {
+    console.log(`(conditions: ${conditionNotes.join(', ')})`);
+  }
+
+  process.exit(0);
+}
+
 function handleEncounterAttackCommand(rawArgs: string[]): void {
   if (rawArgs.length < 2) {
     console.error(
@@ -2794,6 +2974,16 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
     if (error instanceof Error) {
       console.error(error.message);
     }
+    process.exit(1);
+  }
+
+  if (encounter.defeated.has(attacker.id) || attacker.hp <= 0) {
+    console.error(`${attacker.name} (id=${attacker.id}) is defeated and cannot attack.`);
+    process.exit(1);
+  }
+
+  if (encounter.defeated.has(defender.id) || defender.hp <= 0) {
+    console.error(`${defender.name} (id=${defender.id}) is defeated. Choose an active target.`);
     process.exit(1);
   }
 
@@ -3046,6 +3236,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'next') {
     handleEncounterNextCommand();
+    return;
+  }
+
+  if (subcommand === 'check') {
+    handleEncounterCheckCommand(rest);
     return;
   }
 

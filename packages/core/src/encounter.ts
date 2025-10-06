@@ -1,6 +1,13 @@
 import type { AbilityName } from './abilityScores.js';
 import type { Condition, ConditionSet } from './conditions.js';
-import { addCondition, attackAdvFromConditions, combineAdvantage, removeCondition } from './conditions.js';
+import {
+  addCondition,
+  attackAdvFromConditions,
+  combineAdvantage,
+  hasCondition,
+  removeCondition,
+} from './conditions.js';
+import { abilityCheck } from './checks.js';
 import type { ResolveAttackResult } from './combat.js';
 import { resolveAttack } from './combat.js';
 import { roll } from './dice.js';
@@ -62,6 +69,41 @@ export interface EncounterState {
   lootLog?: { coins: CoinBundle; items: string[]; note?: string }[];
   xpLog?: { crs: string[]; total: number }[];
   concentration?: Record<string, ConcentrationEntry>;
+}
+
+export interface EncounterCheckInput {
+  actorId: string;
+  ability: AbilityName;
+  dc?: number;
+  baseMod: number;
+  advantage?: boolean;
+  disadvantage?: boolean;
+  seed?: string;
+}
+
+/** For now: only poisoned affects ability checks (disadvantage). */
+export function encounterAbilityCheck(state: EncounterState, input: EncounterCheckInput) {
+  const actor = state.actors[input.actorId];
+  if (!actor) {
+    throw new Error('Unknown actor');
+  }
+
+  const conditionFlags = hasCondition(actor.conditions, 'poisoned') ? { disadvantage: true } : {};
+  const combined = combineAdvantage(
+    { advantage: input.advantage, disadvantage: input.disadvantage },
+    conditionFlags,
+  );
+
+  return abilityCheck({
+    ability: input.ability,
+    modifier: input.baseMod,
+    proficient: false,
+    proficiencyBonus: 0,
+    advantage: combined.advantage,
+    disadvantage: combined.disadvantage,
+    dc: input.dc,
+    seed: input.seed,
+  });
 }
 
 function cloneDefeated(set: Set<string>): Set<string> {
@@ -350,6 +392,12 @@ export function actorAttack(
   }
   if (!defender) {
     throw new Error(`Unknown defender: ${defenderId}`);
+  }
+  if (state.defeated.has(attackerId)) {
+    throw new Error('Attacker is defeated.');
+  }
+  if (state.defeated.has(defenderId)) {
+    throw new Error('Target is defeated.');
   }
 
   const weapon = selectWeapon(attacker);
