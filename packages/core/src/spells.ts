@@ -1,5 +1,11 @@
 import type { NormalizedSpell } from '@grimengine/dnd5e-api/spells.js';
-import { abilityMod, proficiencyBonusForLevel, type Character } from './character.js';
+import {
+  abilityMod,
+  canSpendSlot,
+  proficiencyBonusForLevel,
+  spendSlot,
+  type Character,
+} from './character.js';
 import { attackRoll, damageRoll } from './combat.js';
 
 export interface CastOptions {
@@ -108,10 +114,32 @@ export function chooseCastingAbility(
 export function castSpell(opts: CastOptions): CastResult {
   const { caster } = opts;
   const spell = opts.spell;
+  const notes: string[] = [];
+
+  const slotLevel = (() => {
+    if (spell.level <= 0) {
+      return undefined;
+    }
+    const requested = opts.slotLevel ?? spell.level;
+    const effective = Math.max(spell.level, requested);
+    if (!canSpendSlot(caster, effective)) {
+      notes.push(`No slot available at level ${effective}.`);
+      return null;
+    }
+    if (!spendSlot(caster, effective)) {
+      notes.push(`No slot available at level ${effective}.`);
+      return null;
+    }
+    return effective;
+  })();
+
+  if (slotLevel === null) {
+    return { kind: 'none', notes };
+  }
+
   const ability = chooseCastingAbility(caster, spell, opts.castingAbility);
   const pb = proficiencyBonusForLevel(caster.level);
   const abilityModifier = abilityMod(caster.abilities[ability]);
-  const notes: string[] = [];
   const attackSeed = opts.seed ? `${opts.seed}:attack` : undefined;
   const damageSeed = opts.seed ? `${opts.seed}:damage` : undefined;
 
@@ -120,8 +148,8 @@ export function castSpell(opts: CastOptions): CastResult {
       if (spell.level === 0) {
         return diceForCharacterLevel(spell, caster.level);
       }
-      if (typeof opts.slotLevel === 'number' && spell.damageAtSlotLevel) {
-        return diceForSlotLevel(spell, opts.slotLevel);
+      if (typeof slotLevel === 'number' && spell.damageAtSlotLevel) {
+        return diceForSlotLevel(spell, slotLevel);
       }
       return spell.damageDice;
     })();

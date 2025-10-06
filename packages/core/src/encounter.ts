@@ -195,6 +195,13 @@ export function createEncounter(seed?: string): EncounterState {
   };
 }
 
+export function clearAllConcentration(state: EncounterState): EncounterState {
+  if (!state.concentration || Object.keys(state.concentration).length === 0) {
+    return state;
+  }
+  return { ...state, concentration: {} };
+}
+
 export function addActor(state: EncounterState, actor: Actor): EncounterState {
   const actors = { ...state.actors, [actor.id]: actor };
   const defeated = cloneDefeated(state.defeated);
