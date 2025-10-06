@@ -1,0 +1,238 @@
+PS C:\dev\grimengine> pnpm test
+
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/core, @grimengine/dnd5e-api, @grimengine/rules-srd
+• Running test in 3 packages
+• Remote caching disabled
+@grimengine/core:test: cache miss, executing 88b201c091b61f9e
+@grimengine/core:test: 
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest --config vitest.config.ts
+@grimengine/core:test:
+@grimengine/core:test: 
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test:
+@grimengine/core:test:  ✓ tests/checks.test.ts (5 tests) 9ms
+@grimengine/core:test:  ✓ tests/combat.test.ts (8 tests) 13ms
+@grimengine/core:test:  ✓ tests/conditions.test.ts (11 tests) 15ms
+@grimengine/core:test:  ✓ tests/encounter.test.ts (3 tests) 14ms
+@grimengine/core:test:  ✓ tests/skills.test.ts (4 tests) 10ms
+@grimengine/core:test:  ✓ tests/character.test.ts (6 tests) 14ms
+@grimengine/core:test:  ✓ tests/spells.test.ts (9 tests) 17ms
+@grimengine/core:test:  ✓ tests/weapons.test.ts (6 tests) 14ms
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 12ms
+@grimengine/core:test:  ✓ tests/loot.test.ts (5 tests) 12ms
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 9ms
+@grimengine/core:test:  ✓ tests/derived.test.ts (7 tests) 8ms
+@grimengine/core:test:  ✓ tests/concentration.test.ts (3 tests) 7ms
+@grimengine/core:test:  ✓ tests/monster-normalize.test.ts (1 test) 7ms
+@grimengine/core:test: 
+@grimengine/core:test:  Test Files  14 passed (14)
+@grimengine/core:test:       Tests  81 passed (81)
+@grimengine/core:test:    Start at  19:01:04
+@grimengine/core:test:    Duration  2.01s (transform 1.09s, setup 0ms, collect 2.16s, tests 159ms, environment 5ms, prepare 4.00s)
+@grimengine/core:test: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    4.641s
+
+PS C:\dev\grimengine> pnpm dev -- character load-name "Aerin"                                                                                        
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "load-name" "Aerin"
+
+Loaded character Aerin (lvl 3). PB +2
+PS C:\dev\grimengine> pnpm dev -- encounter start --seed grim
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "start" "--seed" "grim"
+
+Encounter started (seed="grim").
+PS C:\dev\grimengine> pnpm dev -- encounter add pc "Aerin"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "pc" "Aerin"
+
+Added PC Aerin (id=aerin).
+PS C:\dev\grimengine> pnpm dev -- encounter add monster "Skeleton"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "monster" "Skeleton"
+
+Fetched Skeleton from the 5e API.
+Added 1 Skeleton: Skeleton #1 (id=skeleton-1)
+PS C:\dev\grimengine> pnpm dev -- encounter roll-init
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "roll-init"
+
+Initiative order:
+1. Skeleton #1 (id=skeleton-1) → 12 = 10 + Dex +2
+2. Aerin (id=aerin) → 11 = 9 + Dex +2
+PS C:\dev\grimengine> pnpm dev -- character cast "Fire Bolt" --target "Skeleton #1" --seed grim --ranged
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "cast" "Fire Bolt" "--target" "Skeleton #1" "--seed" "grim" "--ranged"
+
+Casting Fire Bolt (INT spell attack +2 vs AC 13) on Skeleton #1...
+Attack: 1d20+2 vs AC 13
+Rolls: [15] → natural 15 → total 17 → HIT
+Damage: 1d10 → 6 fire
+Target Skeleton #1 now has 7/13 HP (active).
+PS C:\dev\grimengine> pnpm dev -- character set --level 3
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "set" "--level" "3"
+
+Level remains 3.
+Proficiency Bonus: +2
+Derived:
+  AC: 12    Max HP: 21 (Hit Die d8 (default))
+  Default Weapon: Unarmed (fallback) (to-hit +5; damage 1d4+3)
+  Note: No hit die specified; defaulting to d8.
+  Note: No weapon equipped; using fallback Unarmed.
+PS C:\dev\grimengine> pnpm dev -- character cast "Fire Bolt" --target "Skeleton #1" --seed grim --ranged
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "cast" "Fire Bolt" "--target" "Skeleton #1" "--seed" "grim" "--ranged"
+
+Casting Fire Bolt (INT spell attack +2 vs AC 13) on Skeleton #1...
+Attack: 1d20+2 vs AC 13
+Rolls: [15] → natural 15 → total 17 → HIT
+Damage: 1d10 → 6 fire
+Target Skeleton #1 now has 1/13 HP (active).
+PS C:\dev\grimengine> pnpm dev -- character set --level 5
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "set" "--level" "5"
+
+Updated level: 3 → 5.
+Proficiency Bonus: +3
+Derived:
+  AC: 12    Max HP: 33 (Hit Die d8 (default))
+  Default Weapon: Unarmed (fallback) (to-hit +6; damage 1d4+3)
+  Note: No hit die specified; defaulting to d8.
+  Note: No weapon equipped; using fallback Unarmed.
+PS C:\dev\grimengine> pnpm dev -- character cast "Fire Bolt" --target "Skeleton #1" --seed grim --ranged
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "cast" "Fire Bolt" "--target" "Skeleton #1" "--seed" "grim" "--ranged"
+
+Casting Fire Bolt (INT spell attack +3 vs AC 13) on Skeleton #1...
+Attack: 1d20+3 vs AC 13
+Rolls: [15] → natural 15 → total 18 → HIT
+Damage: 2d10 → 14 fire
+Target Skeleton #1 now has 0/13 HP (DEFEATED).
+PS C:\dev\grimengine> pnpm dev -- spell fetch "Bless"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "spell" "fetch" "Bless"
+
+Bless — Level 1
+Mechanic: —
+Damage: —
+Range: 30 feet
+Casting Time: 1 action
+Tags: Concentration
+Cached at C:\dev\grimengine\.data\cache\spells\bless.json
+PS C:\dev\grimengine> pnpm dev -- spell show "Bless"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "spell" "show" "Bless"
+
+Bless — Level 1
+Mechanic: —
+Damage: —
+Range: 30 feet
+Casting Time: 1 action
+Tags: Concentration
+PS C:\dev\grimengine> pnpm dev -- encounter concentration start "Aerin" "Bless" --target "Skeleton #1"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "concentration" "start" "Aerin" "Bless" "--target" "Skeleton #1"
+
+Concentration started on Bless (caster: Aerin, target: skeleton-1).
+PS C:\dev\grimengine> pnpm dev -- encounter concentration check "Aerin" 7
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "concentration" "check" "Aerin" "7"
+
+Concentration check for Aerin (spell: Bless) — damage 7 → DC 10.
+Roll: 1d20+1+3 vs DC 10
+Result: 10 → total 14 → SUCCESS
+Concentration maintained on Bless.
+PS C:\dev\grimengine> pnpm dev -- encounter concentration end "Aerin"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "concentration" "end" "Aerin"
+
+Concentration on Bless ended for Aerin.
+PS C:\dev\grimengine> pnpm dev -- encounter list
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "list"
+
+Encounter encounter-grim
+Round: 1 | Turn: 1/2
+Actors:
+→ [party] Aerin (id=aerin) AC 12 HP 21/21 init=11 (roll 9)
+  [foe] Skeleton #1 (id=skeleton-1) AC 13 HP 0/13 [DEFEATED] init=12 (roll 10)
+PS C:\dev\grimengine> pnpm dev -- spell fetch "Guiding Bolt" 
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "spell" "fetch" "Guiding Bolt"
+
+Guiding Bolt — Level 1
+Mechanic: ranged spell attack
+Damage: 4d6 radiant
+Range: 120 feet
+Casting Time: 1 action
+Cached at C:\dev\grimengine\.data\cache\spells\guiding-bolt.json
+PS C:\dev\grimengine> pnpm dev -- spell show "Guiding Bolt"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "spell" "show" "Guiding Bolt"
+
+Guiding Bolt — Level 1
+Mechanic: ranged spell attack
+Damage: 4d6 radiant
+Range: 120 feet
+Casting Time: 1 action
+PS C:\dev\grimengine> pnpm dev -- character cast "Guiding Bolt" --target "Skeleton #1" --seed grim --ranged --ability WIS --slotLevel 1
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "cast" "Guiding Bolt" "--target" "Skeleton #1" "--seed" "grim" "--ranged" "--ability" "WIS" "--slotLevel" "1"    
+
+Casting Guiding Bolt (WIS spell attack +3 vs AC 13) on Skeleton #1...
+Attack: 1d20+3 vs AC 13
+Rolls: [15] → natural 15 → total 18 → HIT
+Damage: 4d6 → 19 radiant
+Target Skeleton #1 now has 0/13 HP (DEFEATED).
+PS C:\dev\grimengine> pnpm dev -- character cast "Guiding Bolt" --target "Skeleton #1" --seed grim --ranged --ability WIS --slotLevel 3
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "cast" "Guiding Bolt" "--target" "Skeleton #1" "--seed" "grim" "--ranged" "--ability" "WIS" "--slotLevel" "3"    
+
+Casting Guiding Bolt (WIS spell attack +3 vs AC 13) on Skeleton #1...
+Attack: 1d20+3 vs AC 13
+Rolls: [15] → natural 15 → total 18 → HIT
+Damage: 6d6 → 28 radiant
+Target Skeleton #1 now has 0/13 HP (DEFEATED).
+PS C:\dev\grimengine> pnpm dev -- encounter end
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "end"
+
+Encounter ended.
+PS C:\dev\grimengine> pnpm dev -- character unload
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "unload"
+
+Character session cleared.
+PS C:\dev\grimengine> 

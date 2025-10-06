@@ -1,0 +1,259 @@
+PS C:\dev\grimengine> pn
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      pnpm test
+
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/core, @grimengine/dnd5e-api, @grimengine/rules-srd
+• Running test in 3 packages
+• Remote caching disabled
+@grimengine/core:test: cache hit (outputs already on disk), replaying logs 93dfb3c640ccbd85
+@grimengine/core:test: 
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest --config vitest.config.ts
+@grimengine/core:test:
+@grimengine/core:test:
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test:
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 12ms
+@grimengine/core:test:  ✓ tests/combat.test.ts (8 tests) 14ms
+@grimengine/core:test:  ✓ tests/encounter.test.ts (3 tests) 15ms
+@grimengine/core:test:  ✓ tests/tags.test.ts (3 tests) 13ms
+@grimengine/core:test:  ✓ tests/conditions.test.ts (11 tests) 14ms
+@grimengine/core:test:  ✓ tests/character.test.ts (6 tests) 12ms
+@grimengine/core:test:  ✓ tests/spells.test.ts (9 tests) 17ms
+@grimengine/core:test:  ✓ tests/weapons.test.ts (6 tests) 13ms
+@grimengine/core:test:  ✓ tests/encounter-checks.test.ts (4 tests) 15ms
+@grimengine/core:test:  ✓ tests/loot.test.ts (5 tests) 13ms
+@grimengine/core:test:  ✓ tests/skills.test.ts (4 tests) 9ms
+@grimengine/core:test:  ✓ tests/slots.test.ts (5 tests) 10ms
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 9ms
+@grimengine/core:test:  ✓ tests/derived.test.ts (7 tests) 9ms
+@grimengine/core:test:  ✓ tests/monster-normalize.test.ts (1 test) 7ms
+@grimengine/core:test:  ✓ tests/checks.test.ts (5 tests) 8ms
+@grimengine/core:test:  ✓ tests/concentration.test.ts (3 tests) 5ms
+@grimengine/core:test:
+@grimengine/core:test:  Test Files  17 passed (17)
+@grimengine/core:test:       Tests  93 passed (93)
+@grimengine/core:test:    Start at  13:05:42
+@grimengine/core:test:    Duration  2.45s (transform 1.07s, setup 0ms, collect 2.44s, tests 195ms, environment 5ms, prepare 4.91s)
+@grimengine/core:test:
+
+ Tasks:    1 successful, 1 total
+Cached:    1 cached, 1 total
+  Time:    386ms >>> FULL TURBO
+
+PS C:\dev\grimengine> pnpm dev -- character load-name "Aerin"                                                                                        
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "load-name" "Aerin"
+
+Loaded character Aerin (lvl 3). PB +2
+PS C:\dev\grimengine> pnpm dev -- encounter start --seed grim
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "start" "--seed" "grim"
+
+Encounter started (seed="grim").
+PS C:\dev\grimengine> pnpm dev -- encounter add pc "Aerin"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "pc" "Aerin"
+
+Added PC Aerin (id=aerin).
+PS C:\dev\grimengine> pnpm dev -- encounter add monster "Skeleton"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "monster" "Skeleton"
+
+Fetched Skeleton from the 5e API.
+Added 1 Skeleton: Skeleton #1 (id=skeleton-1)
+PS C:\dev\grimengine> pnpm dev -- encounter roll-init
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "roll-init"
+
+Initiative order:
+1. Skeleton #1 (id=skeleton-1) → 12 = 10 + Dex +2
+2. Aerin (id=aerin) → 11 = 9 + Dex +2
+PS C:\dev\grimengine> pnpm dev -- encounter list
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "list"
+
+Encounter encounter-grim
+Round: 1 | Turn: 1/2
+Actors:
+  [party] Aerin (id=aerin) AC 12 HP 21/21 — conditions: — — tags: — init=11 (roll 9)
+→ [foe] Skeleton #1 (id=skeleton-1) AC 13 HP 13/13 — conditions: — — tags: — init=12 (roll 10)
+PS C:\dev\grimengine> pnpm dev -- encounter note add "Aerin" "Bless" --rounds 4 --note "d4 to attacks/saves" --source "Spell"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "note" "add" "Aerin" "Bless" "--rounds" "4" "--note" "d4 to attacks/saves" "--source" "Spell"
+
+Added tag t1 to Aerin (id=aerin): "Bless" (expires at round 4).
+PS C:\dev\grimengine> pnpm dev -- encounter note add "Skeleton #1" "Marked" --note "Hunter's Mark"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "note" "add" "Skeleton #1" "Marked" "--note" "Hunter's Mark"
+
+Added tag t1 to Skeleton #1 (id=skeleton-1): "Marked".
+PS C:\dev\grimengine> pnpm dev -- encounter note list
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "note" "list"
+
+Actor tags:
+Aerin (id=aerin):
+  - t1: Bless (R1→R4) (note: d4 to attacks/saves; source: Spell)
+Skeleton #1 (id=skeleton-1):
+  - t1: Marked (note: Hunter's Mark)
+PS C:\dev\grimengine> pnpm dev -- encounter list
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "list"
+
+Encounter encounter-grim
+Round: 1 | Turn: 1/2
+Actors:
+  [party] Aerin (id=aerin) AC 12 HP 21/21 — conditions: — — tags: Bless (R1→R4) — note: d4 to attacks/saves; source: Spell init=11 (roll 9)
+→ [foe] Skeleton #1 (id=skeleton-1) AC 13 HP 13/13 — conditions: — — tags: Marked — note: Hunter's Mark init=12 (roll 10)
+PS C:\dev\grimengine> pnpm dev -- encounter next
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "next"
+
+Round 1, turn 2.
+Current actor: Aerin (id=aerin)
+PS C:\dev\grimengine> pnpm dev -- encounter next
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "next"
+
+Round 2, turn 1.
+Current actor: Skeleton #1 (id=skeleton-1)
+PS C:\dev\grimengine> pnpm dev -- encounter next
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "next"
+
+Round 2, turn 2.
+Current actor: Aerin (id=aerin)
+PS C:\dev\grimengine> pnpm dev -- encounter next
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "next"
+
+Round 3, turn 1.
+Current actor: Skeleton #1 (id=skeleton-1)
+PS C:\dev\grimengine> pnpm dev -- encounter next
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "next"
+
+Round 3, turn 2.
+Current actor: Aerin (id=aerin)
+PS C:\dev\grimengine> pnpm dev -- encounter next
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "next"
+
+Round 4, turn 1.
+Current actor: Skeleton #1 (id=skeleton-1)
+PS C:\dev\grimengine> pnpm dev -- encounter next
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "next"
+
+Round 4, turn 2.
+Current actor: Aerin (id=aerin)
+PS C:\dev\grimengine> pnpm dev -- encounter next
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "next"
+
+Round 5, turn 1.
+Current actor: Skeleton #1 (id=skeleton-1)
+Expired tags: Aerin[t1: Bless]
+PS C:\dev\grimengine> pnpm dev -- encounter list
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "list"
+
+Encounter encounter-grim
+Round: 5 | Turn: 1/2
+Actors:
+  [party] Aerin (id=aerin) AC 12 HP 21/21 — conditions: — — tags: — init=11 (roll 9)
+→ [foe] Skeleton #1 (id=skeleton-1) AC 13 HP 13/13 — conditions: — — tags: Marked — note: Hunter's Mark init=12 (roll 10)
+PS C:\dev\grimengine> pnpm dev -- encounter note add "Skeleton #1" "Taunted" --rounds 2
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "note" "add" "Skeleton #1" "Taunted" "--rounds" "2"
+
+Added tag t2 to Skeleton #1 (id=skeleton-1): "Taunted" (expires at round 6).
+PS C:\dev\grimengine> pnpm dev -- encounter note list
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "note" "list"
+
+Actor tags:
+Aerin (id=aerin): —
+Skeleton #1 (id=skeleton-1):
+  - t1: Marked (note: Hunter's Mark)
+  - t2: Taunted (R5→R6)
+PS C:\dev\grimengine> pnpm dev -- encounter note remove "Skeleton #1" t2
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "note" "remove" "Skeleton #1" "t2"
+
+Removed tag t2 from Skeleton #1 (id=skeleton-1). Remaining tags: Marked — note: Hunter's Mark.
+PS C:\dev\grimengine> pnpm dev -- encounter note clear "Skeleton #1"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "note" "clear" "Skeleton #1"
+
+Cleared all tags for Skeleton #1 (id=skeleton-1).
+PS C:\dev\grimengine> pnpm dev -- encounter note list
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "note" "list"
+
+Actor tags:
+Aerin (id=aerin): —
+Skeleton #1 (id=skeleton-1): —
+PS C:\dev\grimengine> pnpm dev -- encounter end
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "end"
+
+Encounter ended.
+PS C:\dev\grimengine> pnpm dev -- character unload
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "unload"
+
+Character session cleared.
+PS C:\dev\grimengine> 

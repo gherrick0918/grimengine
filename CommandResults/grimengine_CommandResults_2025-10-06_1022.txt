@@ -1,0 +1,228 @@
+PS C:\dev\grimengine> pnpm test
+
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/core, @grimengine/dnd5e-api, @grimengine/rules-srd
+• Running test in 3 packages
+• Remote caching disabled
+@grimengine/core:test: cache hit (outputs already on disk), replaying logs cb38b38dc4b79200
+@grimengine/core:test: 
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest --config vitest.config.ts
+@grimengine/core:test:
+@grimengine/core:test:
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test:
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 11ms
+@grimengine/core:test:  ✓ tests/checks.test.ts (5 tests) 9ms
+@grimengine/core:test:  ✓ tests/combat.test.ts (8 tests) 12ms
+@grimengine/core:test:  ✓ tests/encounter.test.ts (3 tests) 12ms
+@grimengine/core:test:  ✓ tests/conditions.test.ts (11 tests) 12ms
+@grimengine/core:test:  ✓ tests/character.test.ts (6 tests) 13ms
+@grimengine/core:test:  ✓ tests/spells.test.ts (9 tests) 17ms
+@grimengine/core:test:  ✓ tests/encounter-checks.test.ts (4 tests) 11ms
+@grimengine/core:test:  ✓ tests/loot.test.ts (5 tests) 10ms
+@grimengine/core:test:  ✓ tests/weapons.test.ts (6 tests) 11ms
+@grimengine/core:test:  ✓ tests/derived.test.ts (7 tests) 9ms
+@grimengine/core:test:  ✓ tests/slots.test.ts (5 tests) 9ms
+@grimengine/core:test:  ✓ tests/skills.test.ts (4 tests) 11ms
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 9ms
+@grimengine/core:test:  ✓ tests/concentration.test.ts (3 tests) 6ms
+@grimengine/core:test:  ✓ tests/monster-normalize.test.ts (1 test) 7ms
+@grimengine/core:test:
+@grimengine/core:test:  Test Files  16 passed (16)
+@grimengine/core:test:       Tests  90 passed (90)
+@grimengine/core:test:    Start at  10:04:31
+@grimengine/core:test:    Duration  2.14s (transform 904ms, setup 0ms, collect 1.93s, tests 168ms, environment 5ms, prepare 4.13s)
+@grimengine/core:test:
+
+ Tasks:    1 successful, 1 total
+Cached:    1 cached, 1 total
+  Time:    326ms >>> FULL TURBO
+
+PS C:\dev\grimengine> pnpm dev -- character load-name "Aerin"                                                                                        
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "load-name" "Aerin"
+
+Loaded character Aerin (lvl 3). PB +2
+PS C:\dev\grimengine> pnpm dev -- character slots set "1=2,2=0,3=0"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "slots" "set" "1=2,2=0,3=0"
+
+Spell Slots:
+Level | Max | Remaining
+----- | --- | ---------
+    1 |   2 |         2
+PS C:\dev\grimengine> pnpm dev -- character slots show
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "slots" "show"
+
+Spell Slots:
+Level | Max | Remaining
+----- | --- | ---------
+    1 |   2 |         2
+PS C:\dev\grimengine> pnpm dev -- encounter start --seed grim
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "start" "--seed" "grim"
+
+Encounter started (seed="grim").
+PS C:\dev\grimengine> pnpm dev -- encounter add pc "Aerin"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "pc" "Aerin"
+
+Added PC Aerin (id=aerin).
+PS C:\dev\grimengine> pnpm dev -- encounter add monster "Skeleton"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "monster" "Skeleton"
+
+Fetched Skeleton from the 5e API.
+Added 1 Skeleton: Skeleton #1 (id=skeleton-1)
+PS C:\dev\grimengine> pnpm dev -- encounter add monster "Skeleton"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "monster" "Skeleton"
+
+Fetched Skeleton from the 5e API.
+Added 1 Skeleton: Skeleton #2 (id=skeleton-2)
+PS C:\dev\grimengine> pnpm dev -- encounter add monster "Skeleton"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "monster" "Skeleton"
+
+Fetched Skeleton from the 5e API.
+Added 1 Skeleton: Skeleton #3 (id=skeleton-3)
+PS C:\dev\grimengine> pnpm dev -- encounter add monster "Skeleton"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "monster" "Skeleton"
+
+Fetched Skeleton from the 5e API.
+Added 1 Skeleton: Skeleton #4 (id=skeleton-4)
+PS C:\dev\grimengine> pnpm dev -- encounter add monster "Skeleton"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "monster" "Skeleton"
+
+Fetched Skeleton from the 5e API.
+Added 1 Skeleton: Skeleton #5 (id=skeleton-5)
+PS C:\dev\grimengine> pnpm dev -- encounter add monster "Skeleton"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "monster" "Skeleton"
+
+Fetched Skeleton from the 5e API.
+Added 1 Skeleton: Skeleton #6 (id=skeleton-6)
+PS C:\dev\grimengine> pnpm dev -- encounter roll-init
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "roll-init"
+
+Initiative order:
+1. Skeleton #6 (id=skeleton-6) → 20 = 18 + Dex +2
+2. Skeleton #5 (id=skeleton-5) → 13 = 11 + Dex +2
+3. Skeleton #1 (id=skeleton-1) → 12 = 10 + Dex +2
+4. Skeleton #2 (id=skeleton-2) → 12 = 10 + Dex +2
+5. Aerin (id=aerin) → 11 = 9 + Dex +2
+6. Skeleton #3 (id=skeleton-3) → 11 = 9 + Dex +2
+7. Skeleton #4 (id=skeleton-4) → 11 = 9 + Dex +2
+PS C:\dev\grimengine> pnpm dev -- spell fetch "Guiding Bolt"
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "spell" "fetch" "Guiding Bolt"
+
+Guiding Bolt — Level 1
+Mechanic: ranged spell attack
+Damage: 4d6 radiant
+Range: 120 feet
+Casting Time: 1 action
+Cached at C:\dev\grimengine\.data\cache\spells\guiding-bolt.json
+PS C:\dev\grimengine> pnpm dev -- character cast "Guiding Bolt" --target "Skeleton #1" --seed grim --ranged --ability WIS --slotLevel 1
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "cast" "Guiding Bolt" "--target" "Skeleton #1" "--seed" "grim" "--ranged" "--ability" "WIS" "--slotLevel" "1"    
+
+Casting Guiding Bolt (WIS spell attack +2 vs AC 13) on Skeleton #1...
+Attack: 1d20+2 vs AC 13
+Rolls: [15] → natural 15 → total 17 → HIT
+Damage: 4d6 → 19 radiant
+Target Skeleton #1 now has 0/13 HP (DEFEATED).
+(slot 1 spent: remaining 1/2)
+PS C:\dev\grimengine> pnpm dev -- character cast "Guiding Bolt" --target "Skeleton #1" --seed grim --ranged --ability WIS --slotLevel 1
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "cast" "Guiding Bolt" "--target" "Skeleton #1" "--seed" "grim" "--ranged" "--ability" "WIS" "--slotLevel" "1"    
+
+Skeleton #1 (id=skeleton-1) is defeated. Choose an active target.
+ ELIFECYCLE  Command failed with exit code 1.
+PS C:\dev\grimengine> pnpm dev -- character cast "Guiding Bolt" --target "Skeleton #2" --seed grim --ranged --ability WIS --slotLevel 1
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "cast" "Guiding Bolt" "--target" "Skeleton #2" "--seed" "grim" "--ranged" "--ability" "WIS" "--slotLevel" "1"    
+
+Casting Guiding Bolt (WIS spell attack +2 vs AC 13) on Skeleton #2...
+Attack: 1d20+2 vs AC 13
+Rolls: [15] → natural 15 → total 17 → HIT
+Damage: 4d6 → 19 radiant
+Target Skeleton #2 now has 0/13 HP (DEFEATED).
+(slot 1 spent: remaining 0/2)
+PS C:\dev\grimengine> pnpm dev -- character cast "Guiding Bolt" --target "Skeleton #3" --seed grim --ranged --ability WIS --slotLevel 1
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "cast" "Guiding Bolt" "--target" "Skeleton #3" "--seed" "grim" "--ranged" "--ability" "WIS" "--slotLevel" "1"    
+
+No slot available at level 1.
+ ELIFECYCLE  Command failed with exit code 1.
+PS C:\dev\grimengine> pnpm dev -- character rest long
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "rest" "long"
+
+Long rest complete: slots restored; concentration cleared.
+PS C:\dev\grimengine> pnpm dev -- character slots show 
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "slots" "show"
+
+Spell Slots:
+Level | Max | Remaining
+----- | --- | ---------
+    1 |   2 |         2
+PS C:\dev\grimengine> pnpm dev -- character cast "Fire Bolt" --target "Skeleton #1" --seed grim --ranged
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "cast" "Fire Bolt" "--target" "Skeleton #1" "--seed" "grim" "--ranged"
+
+Skeleton #1 (id=skeleton-1) is defeated. Choose an active target.
+ ELIFECYCLE  Command failed with exit code 1.
+PS C:\dev\grimengine> pnpm dev -- character cast "Fire Bolt" --target "Skeleton #3" --seed grim --ranged
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "cast" "Fire Bolt" "--target" "Skeleton #3" "--seed" "grim" "--ranged"
+
+Casting Fire Bolt (INT spell attack +2 vs AC 13) on Skeleton #3...
+Attack: 1d20+2 vs AC 13
+Rolls: [15] → natural 15 → total 17 → HIT
+Damage: 1d10 → 6 fire
+Target Skeleton #3 now has 7/13 HP (active).
+PS C:\dev\grimengine> pnpm dev -- encounter end
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "end"
+
+Encounter ended.
+PS C:\dev\grimengine> pnpm dev -- character unload
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "unload"
+
+Character session cleared.
+PS C:\dev\grimengine> 
