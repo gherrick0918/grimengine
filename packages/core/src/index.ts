@@ -90,7 +90,6 @@ export {
   setCondition,
   clearCondition,
   addActorTag,
-  addActorTagDetailed,
   removeActorTag,
   clearActorTags,
   expireActorTags,
@@ -100,7 +99,6 @@ export {
   startConcentration,
   endConcentration,
   getConcentration,
-  removeConcentration,
   concentrationDCFromDamage,
 } from './encounter.js';
 export type {
@@ -108,31 +106,14 @@ export type {
   Actor,
   ActorBase,
   ActorTag,
-  AddActorTagResult,
   MonsterActor,
   PlayerActor,
   InitiativeEntry,
   WeaponProfile,
   Side,
   ConcentrationEntry,
-  ConcentrationTagLink,
-  ConcentrationRemovalResult,
   EncounterCheckInput,
 } from './encounter.js';
-export {
-  BlessHelper,
-  HuntersMarkHelper,
-  type DurationSpec,
-  type AppliedTagSummary,
-  type BlessCastOptions,
-  type BlessCastResult,
-  type HuntersMarkCastOptions,
-  type HuntersMarkCastResult,
-  type HuntersMarkTransferOptions,
-  type HuntersMarkTransferResult,
-  type ConcentrationBreakSummary,
-  type ConcentrationLifecycleResult,
-} from './concentrationHelpers.js';
 export { rollCoinsForCR, xpForCR, totalXP } from './loot.js';
 export type { CoinBundle, LootRoll } from './loot.js';
 export { castSpell, chooseCastingAbility, spellSaveDC, diceForCharacterLevel, diceForSlotLevel } from './spells.js';
