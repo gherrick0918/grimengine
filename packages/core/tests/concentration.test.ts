@@ -21,7 +21,10 @@ describe('concentration helpers', () => {
     const entry = { casterId: 'pc-1', spellName: 'Bless', targetId: 'ally-1' };
 
     const withConcentration = startConcentration(encounter, entry);
-    expect(getConcentration(withConcentration, 'pc-1')).toEqual(entry);
+    expect(getConcentration(withConcentration, 'pc-1')).toMatchObject({
+      ...entry,
+      targetIds: ['ally-1'],
+    });
 
     const cleared = endConcentration(withConcentration, 'pc-1');
     expect(getConcentration(cleared, 'pc-1')).toBeUndefined();
