@@ -22,6 +22,8 @@ export interface ActorTag {
   expiresAtRound?: number;
   note?: string;
   source?: string;
+  key?: string;
+  value?: unknown;
 }
 
 export interface ActorBase {
