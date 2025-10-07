@@ -164,6 +164,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter concentration end "<casterIdOrName>"');
   console.log('  pnpm dev -- encounter concentration check "<casterIdOrName>" <damage> [--seed <value>]');
   console.log('  pnpm dev -- encounter mark "<rangerIdOrName>" "<targetIdOrName>" [--note "<detail>"]');
+  console.log('  pnpm dev -- encounter bless "<casterIdOrName>" --targets "A,B,C" [--note "<detail>"]');
   console.log('  pnpm dev -- encounter condition add "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition remove "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition list');
@@ -2737,6 +2738,123 @@ function handleEncounterConcentrationCommand(rawArgs: string[]): void {
   process.exit(1);
 }
 
+function parseTargetsArg(args: string[]): { targetsCsv?: string; noteText?: string } {
+  let targetsCsv: string | undefined;
+  let noteText: string | undefined;
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (!arg) {
+      continue;
+    }
+    if (arg === '--targets') {
+      if (i + 1 >= args.length) {
+        console.error('Expected value after --targets.');
+        process.exit(1);
+      }
+      targetsCsv = args[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === '--note') {
+      if (i + 1 >= args.length) {
+        console.error('Expected value after --note.');
+        process.exit(1);
+      }
+      noteText = args[i + 1];
+      i += 1;
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  return { targetsCsv, noteText };
+}
+
+function handleEncounterBlessCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 1) {
+    console.error(
+      'Usage: pnpm dev -- encounter bless "<casterIdOrName>" --targets "A,B,C" [--note "<detail>"]',
+    );
+    process.exit(1);
+  }
+
+  const [casterIdentifierRaw, ...rest] = rawArgs;
+  const { targetsCsv, noteText } = parseTargetsArg(rest);
+
+  if (!targetsCsv) {
+    console.error('Missing required --targets "A,B,C" argument.');
+    process.exit(1);
+  }
+
+  let encounter = requireEncounterState();
+
+  let caster: EncounterActor;
+  try {
+    caster = findActorByIdentifier(encounter, casterIdentifierRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const targetTokens = targetsCsv
+    .split(',')
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+
+  if (targetTokens.length === 0) {
+    console.error('No valid targets provided to --targets.');
+    process.exit(1);
+  }
+
+  const targets: EncounterActor[] = [];
+  for (const token of targetTokens) {
+    try {
+      targets.push(findActorByIdentifier(encounter, token));
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(error.message);
+      }
+      process.exit(1);
+      return;
+    }
+  }
+
+  const source = `conc:${caster.id}:Bless`;
+  for (const actor of Object.values(encounter.actors)) {
+    const tags = actor.tags ?? [];
+    for (const tag of tags) {
+      if (tag.source === source) {
+        encounter = encounterRemoveActorTag(encounter, actor.id, tag.id);
+        console.log(`Removed tag ${tag.id} from ${actor.name}: "Bless"`);
+      }
+    }
+  }
+
+  encounter = startConcentration(encounter, {
+    casterId: caster.id,
+    spellName: 'Bless',
+  });
+
+  const defaultNote = 'Add 1d4 to attack rolls and saving throws';
+  for (const target of targets) {
+    const tag: Omit<ActorTag, 'id' | 'addedAtRound'> = {
+      text: 'Bless',
+      note: noteText ?? defaultNote,
+      source,
+    };
+    encounter = encounterAddActorTag(encounter, target.id, tag);
+    console.log(`Added tag to ${target.name}: "Bless" [${source}]`);
+  }
+
+  saveEncounter(encounter);
+  console.log(`Started/updated concentration: Bless (${caster.name}) → ${targets.length} target(s)`);
+  process.exit(0);
+}
+
 function handleEncounterMarkCommand(rawArgs: string[]): void {
   if (rawArgs.length < 2) {
     console.error(
@@ -3845,6 +3963,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'xp') {
     handleEncounterXpCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'bless') {
+    handleEncounterBlessCommand(rest);
     return;
   }
 
