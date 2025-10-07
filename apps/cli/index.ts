@@ -57,12 +57,14 @@ import {
   startConcentration,
   endConcentration,
   getConcentration,
+  startBless,
   startHuntersMark,
   concentrationDCFromDamage,
   rollCoinsForCR,
   totalXP,
   type EncounterState,
   type Actor as EncounterActor,
+  type ConcentrationEntry,
   type ActorTag,
   type PlayerActor,
   type MonsterActor,
@@ -166,7 +168,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter concentration end "<casterIdOrName>"');
   console.log('  pnpm dev -- encounter concentration check "<casterIdOrName>" <damage> [--seed <value>]');
   console.log('  pnpm dev -- encounter mark "<rangerIdOrName>" "<targetIdOrName>" [--note "<detail>"]');
-  console.log('  pnpm dev -- encounter bless "<casterIdOrName>" --targets "A,B,C" [--note "<detail>"]');
+  console.log('  pnpm dev -- encounter bless "<casterIdOrName>" "A,B,C"');
   console.log('  pnpm dev -- encounter condition add "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition remove "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition list');
@@ -515,6 +517,22 @@ function findActorByIdentifier(state: EncounterState, identifier: string): Encou
   }
 
   throw new Error(`Multiple actors match "${identifier}". Use the actor id instead.`);
+}
+
+function concentrationTargetSummary(state: EncounterState, entry: ConcentrationEntry): string {
+  if (entry.targetIds && entry.targetIds.length > 0) {
+    const labels = entry.targetIds
+      .map((id) => state.actors[id]?.name ?? id)
+      .filter((label) => label && label.length > 0);
+    return labels.length > 0 ? labels.join(', ') : entry.targetIds.join(', ');
+  }
+
+  if (entry.targetId) {
+    const actor = state.actors[entry.targetId];
+    return actor ? actor.name : entry.targetId;
+  }
+
+  return 'none';
 }
 
 function findPcActorByName(state: EncounterState, name: string): PlayerActor | undefined {
@@ -1557,7 +1575,7 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
       const concentrationResult = maybeStartPcConcentration(nextEncounter, character, resolvedSpell, target);
       if (concentrationResult) {
         nextEncounter = concentrationResult.state;
-        const targetLabel = concentrationResult.entry.targetId ?? 'none';
+        const targetLabel = concentrationTargetSummary(concentrationResult.state, concentrationResult.entry);
         console.log(
           `Concentration started on ${concentrationResult.entry.spellName} (caster: ${concentrationResult.caster.name}, target: ${targetLabel}).`,
         );
@@ -1619,7 +1637,7 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
         const concentrationResult = maybeStartPcConcentration(nextEncounter, character, resolvedSpell, target);
         if (concentrationResult) {
           nextEncounter = concentrationResult.state;
-          const targetLabel = concentrationResult.entry.targetId ?? 'none';
+          const targetLabel = concentrationTargetSummary(concentrationResult.state, concentrationResult.entry);
           console.log(
             `Concentration started on ${concentrationResult.entry.spellName} (caster: ${concentrationResult.caster.name}, target: ${targetLabel}).`,
           );
@@ -1653,7 +1671,7 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
       const concentrationResult = maybeStartPcConcentration(activeEncounter, character, resolvedSpell, target);
       if (concentrationResult) {
         saveEncounter(concentrationResult.state);
-        const targetLabel = concentrationResult.entry.targetId ?? 'none';
+        const targetLabel = concentrationTargetSummary(concentrationResult.state, concentrationResult.entry);
         console.log(
           `Concentration started on ${concentrationResult.entry.spellName} (caster: ${concentrationResult.caster.name}, target: ${targetLabel}).`,
         );
@@ -2643,7 +2661,7 @@ function handleEncounterConcentrationStartCommand(rawArgs: string[]): void {
 
   const nextState = startConcentration(encounter, entry);
   saveEncounter(nextState);
-  const targetLabel = entry.targetId ?? 'none';
+  const targetLabel = concentrationTargetSummary(nextState, entry);
   console.log(`Concentration started on ${spellName} (caster: ${caster.name}, target: ${targetLabel}).`);
   process.exit(0);
 }
@@ -2804,53 +2822,16 @@ function handleEncounterConcentrationCommand(rawArgs: string[]): void {
   process.exit(1);
 }
 
-function parseTargetsArg(args: string[]): { targetsCsv?: string; noteText?: string } {
-  let targetsCsv: string | undefined;
-  let noteText: string | undefined;
-  for (let i = 0; i < args.length; i += 1) {
-    const arg = args[i];
-    if (!arg) {
-      continue;
-    }
-    if (arg === '--targets') {
-      if (i + 1 >= args.length) {
-        console.error('Expected value after --targets.');
-        process.exit(1);
-      }
-      targetsCsv = args[i + 1];
-      i += 1;
-      continue;
-    }
-    if (arg === '--note') {
-      if (i + 1 >= args.length) {
-        console.error('Expected value after --note.');
-        process.exit(1);
-      }
-      noteText = args[i + 1];
-      i += 1;
-      continue;
-    }
-
-    console.warn(`Ignoring unknown argument: ${arg}`);
-  }
-
-  return { targetsCsv, noteText };
-}
-
 function handleEncounterBlessCommand(rawArgs: string[]): void {
-  if (rawArgs.length < 1) {
-    console.error(
-      'Usage: pnpm dev -- encounter bless "<casterIdOrName>" --targets "A,B,C" [--note "<detail>"]',
-    );
+  if (rawArgs.length < 2) {
+    console.error('Usage: pnpm dev -- encounter bless "<casterIdOrName>" "A,B,C"');
     process.exit(1);
   }
 
-  const [casterIdentifierRaw, ...rest] = rawArgs;
-  const { targetsCsv, noteText } = parseTargetsArg(rest);
+  const [casterIdentifierRaw, targetsCsvRaw, ...rest] = rawArgs;
 
-  if (!targetsCsv) {
-    console.error('Missing required --targets "A,B,C" argument.');
-    process.exit(1);
+  if (rest.length > 0) {
+    console.warn(`Ignoring extra argument(s): ${rest.join(', ')}`);
   }
 
   let encounter = requireEncounterState();
@@ -2866,20 +2847,24 @@ function handleEncounterBlessCommand(rawArgs: string[]): void {
     return;
   }
 
-  const targetTokens = targetsCsv
+  const targetTokens = targetsCsvRaw
     .split(',')
     .map((token) => token.trim())
     .filter((token) => token.length > 0);
 
   if (targetTokens.length === 0) {
-    console.error('No valid targets provided to --targets.');
+    console.error('Bless requires at least one target name.');
     process.exit(1);
   }
 
-  const targets: EncounterActor[] = [];
+  const resolvedTargets: EncounterActor[] = [];
+  const seenTargetIds = new Set<string>();
+  const ignoredTargets: string[] = [];
+
   for (const token of targetTokens) {
+    let actor: EncounterActor;
     try {
-      targets.push(findActorByIdentifier(encounter, token));
+      actor = findActorByIdentifier(encounter, token);
     } catch (error) {
       if (error instanceof Error) {
         console.error(error.message);
@@ -2887,37 +2872,49 @@ function handleEncounterBlessCommand(rawArgs: string[]): void {
       process.exit(1);
       return;
     }
-  }
 
-  const source = `conc:${caster.id}:Bless`;
-  for (const actor of Object.values(encounter.actors)) {
-    const tags = actor.tags ?? [];
-    for (const tag of tags) {
-      if (tag.source === source) {
-        encounter = encounterRemoveActorTag(encounter, actor.id, tag.id);
-        console.log(`Removed tag ${tag.id} from ${actor.name}: "Bless"`);
-      }
+    if (seenTargetIds.has(actor.id)) {
+      continue;
     }
+
+    if (resolvedTargets.length >= 3) {
+      ignoredTargets.push(actor.name);
+      continue;
+    }
+
+    seenTargetIds.add(actor.id);
+    resolvedTargets.push(actor);
   }
 
-  encounter = startConcentration(encounter, {
-    casterId: caster.id,
-    spellName: 'Bless',
-  });
+  if (resolvedTargets.length === 0) {
+    console.error('Bless requires at least one unique target.');
+    process.exit(1);
+  }
 
-  const defaultNote = 'Add 1d4 to attack rolls and saving throws';
-  for (const target of targets) {
-    const tag: Omit<ActorTag, 'id' | 'addedAtRound'> = {
-      text: 'Bless',
-      note: noteText ?? defaultNote,
-      source,
-    };
-    encounter = encounterAddActorTag(encounter, target.id, tag);
-    console.log(`Added tag to ${target.name}: "Bless" [${source}]`);
+  if (ignoredTargets.length > 0) {
+    console.warn(`Bless can affect up to three targets; ignoring: ${ignoredTargets.join(', ')}`);
+  }
+
+  try {
+    encounter = startBless(
+      encounter,
+      caster.id,
+      resolvedTargets.map((actor) => actor.id),
+    );
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
   }
 
   saveEncounter(encounter);
-  console.log(`Started/updated concentration: Bless (${caster.name}) → ${targets.length} target(s)`);
+
+  const entry = encounter.concentration?.[caster.id];
+  const appliedTargets = entry?.targetIds ?? resolvedTargets.map((actor) => actor.id);
+  const appliedNames = appliedTargets.map((id) => encounter.actors[id]?.name ?? id);
+  console.log(`Bless applied: ${caster.name} → ${appliedNames.join(', ')} (concentration started)`);
   process.exit(0);
 }
 
