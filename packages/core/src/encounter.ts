@@ -581,9 +581,26 @@ export function endConcentration(state: EncounterState, casterId: string): Encou
   if (!state.concentration || !state.concentration[casterId]) {
     return state.concentration ? state : { ...state, concentration: {} };
   }
+
   const concentration = { ...state.concentration };
   delete concentration[casterId];
-  return { ...state, concentration };
+
+  let nextActors: Record<string, Actor> | undefined;
+  for (const [actorId, actor] of Object.entries(state.actors)) {
+    const tags = actor.tags ?? [];
+    if (tags.length === 0) {
+      continue;
+    }
+    const remaining = tags.filter((tag) => !(tag.source && tag.source.startsWith(`conc:${casterId}:`)));
+    if (remaining.length !== tags.length) {
+      if (!nextActors) {
+        nextActors = { ...state.actors };
+      }
+      nextActors[actorId] = { ...actor, tags: remaining };
+    }
+  }
+
+  return nextActors ? { ...state, concentration, actors: nextActors } : { ...state, concentration };
 }
 
 export function getConcentration(
