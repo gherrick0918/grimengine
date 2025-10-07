@@ -119,3 +119,4 @@ export type { CoinBundle, LootRoll } from './loot.js';
 export { castSpell, chooseCastingAbility, spellSaveDC, diceForCharacterLevel, diceForSlotLevel } from './spells.js';
 export type { CastOptions, CastResult, NormalizedSpell } from './spells.js';
 export { startHuntersMark, endHuntersMark } from './spells/huntersMark.js';
+export { startBless, endBless } from './spells/bless.js';

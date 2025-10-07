@@ -68,6 +68,7 @@ export interface ConcentrationEntry {
   casterId: string;
   spellName: string;
   targetId?: string;
+  targetIds?: string[];
 }
 
 export interface EncounterState {
