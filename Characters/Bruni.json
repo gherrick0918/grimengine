@@ -1,0 +1,21 @@
+{
+  "name": "Bruni",
+  "level": 3,
+  "xp": 900,
+  "abilities": { "STR": 14, "DEX": 10, "CON": 16, "INT": 10, "WIS": 16, "CHA": 10 },
+  "proficiencies": {
+    "weapons": { "simple": true },
+    "saves": ["WIS", "CHA"],
+    "skills": ["Insight", "Medicine", "Religion"],
+    "expertise": []
+  },
+  "equipped": {
+    "armor": "Chain Mail",
+    "shield": true,
+    "weapon": "Mace",
+    "hitDie": "d8"
+  },
+  "slots": {
+    "max": { "1": 4, "2": 2 }
+  }
+}
