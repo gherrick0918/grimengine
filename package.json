@@ -7,7 +7,8 @@
     "test": "turbo run test",
     "dev": "tsx apps/cli/index.ts",
     "build": "turbo run build",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "seed:characters": "tsx tools/seed-characters.ts"
   },
   "keywords": [],
   "author": "",

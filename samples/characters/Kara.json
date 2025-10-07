@@ -1,0 +1,83 @@
+{
+  "name": "Kara",
+  "ancestry": "Half-Elf",
+  "race": "Half-Elf",
+  "class": "Ranger",
+  "className": "Ranger",
+  "level": 3,
+  "alignment": "CG",
+  "proficiencyBonus": 2,
+  "abilities": {
+    "STR": 10,
+    "DEX": 17,
+    "CON": 14,
+    "INT": 10,
+    "WIS": 15,
+    "CHA": 12
+  },
+  "hp": {
+    "max": 27,
+    "current": 27,
+    "temp": 0
+  },
+  "ac": 15,
+  "speed": 30,
+  "speedFt": 30,
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "savingThrows": ["STR", "DEX"],
+  "skills": {
+    "Perception": true,
+    "Stealth": true,
+    "Survival": true,
+    "Nature": true,
+    "Athletics": true
+  },
+  "features": [
+    "Fighting Style: Archery (+2 to hit with ranged)",
+    "Favored Foe",
+    "Canny: Perception",
+    "Primeval Awareness"
+  ],
+  "attacks": [
+    {
+      "name": "Longbow",
+      "ability": "DEX",
+      "toHit": 7,
+      "damage": "1d8+3 piercing",
+      "range": "150/600",
+      "properties": ["two-handed", "ammunition"]
+    },
+    {
+      "name": "Shortsword",
+      "ability": "DEX",
+      "toHit": 5,
+      "damage": "1d6+3 piercing",
+      "properties": ["finesse", "light"]
+    }
+  ],
+  "spellcasting": {
+    "castingAbility": "WIS",
+    "known": [
+      "Hunter's Mark",
+      "Goodberry",
+      "Absorb Elements"
+    ],
+    "slots": {
+      "1": 2
+    }
+  },
+  "equipment": [
+    "Studded Leather",
+    "Longbow + 20 arrows",
+    "Shortsword",
+    "Explorer's Pack"
+  ],
+  "traits": [
+    "Darkvision 60 ft",
+    "Fey Ancestry",
+    "Skill Versatility"
+  ]
+}

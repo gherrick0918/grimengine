@@ -1,0 +1,88 @@
+{
+  "name": "Bruni",
+  "ancestry": "Hill Dwarf",
+  "race": "Hill Dwarf",
+  "class": "Cleric",
+  "className": "Cleric",
+  "level": 3,
+  "alignment": "NG",
+  "proficiencyBonus": 2,
+  "abilities": {
+    "STR": 14,
+    "DEX": 10,
+    "CON": 16,
+    "INT": 10,
+    "WIS": 16,
+    "CHA": 12
+  },
+  "hp": {
+    "max": 26,
+    "current": 26,
+    "temp": 0
+  },
+  "ac": 18,
+  "speed": 25,
+  "speedFt": 25,
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "savingThrows": ["WIS", "CHA"],
+  "skills": {
+    "Insight": true,
+    "Religion": true,
+    "Medicine": true,
+    "Perception": true
+  },
+  "attacks": [
+    {
+      "name": "Warhammer",
+      "ability": "STR",
+      "toHit": 4,
+      "damage": "1d8+2 bludgeoning",
+      "properties": ["versatile 1d10"]
+    },
+    {
+      "name": "Javelin",
+      "ability": "STR",
+      "toHit": 4,
+      "damage": "1d6+2 piercing",
+      "range": "30/120"
+    }
+  ],
+  "spellcasting": {
+    "castingAbility": "WIS",
+    "prepared": [
+      "Bless",
+      "Guiding Bolt",
+      "Cure Wounds",
+      "Healing Word",
+      "Spiritual Weapon",
+      "Aid",
+      "Shield of Faith"
+    ],
+    "slots": {
+      "1": 4,
+      "2": 2
+    }
+  },
+  "features": [
+    "Life Domain",
+    "Disciple of Life",
+    "Dwarven Resilience",
+    "Dwarven Toughness",
+    "+1 hp per level"
+  ],
+  "equipment": [
+    "Chain Mail",
+    "Shield (+2 AC)",
+    "Holy Symbol",
+    "Warhammer",
+    "Javelins x3"
+  ],
+  "traits": [
+    "Stonecunning",
+    "Darkvision 60 ft",
+    "Dwarven Combat Training"
+  ]
+}
