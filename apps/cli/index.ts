@@ -163,6 +163,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter concentration start "<casterIdOrName>" "<Spell Name>" [--target "<id|name>"]');
   console.log('  pnpm dev -- encounter concentration end "<casterIdOrName>"');
   console.log('  pnpm dev -- encounter concentration check "<casterIdOrName>" <damage> [--seed <value>]');
+  console.log('  pnpm dev -- encounter mark "<rangerIdOrName>" "<targetIdOrName>" [--note "<detail>"]');
   console.log('  pnpm dev -- encounter condition add "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition remove "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition list');
@@ -2736,6 +2737,83 @@ function handleEncounterConcentrationCommand(rawArgs: string[]): void {
   process.exit(1);
 }
 
+function handleEncounterMarkCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error(
+      'Usage: pnpm dev -- encounter mark "<rangerIdOrName>" "<targetIdOrName>" [--note "<detail>"]',
+    );
+    process.exit(1);
+  }
+
+  const [casterIdentifierRaw, targetIdentifierRaw, ...rest] = rawArgs;
+
+  let noteText: string | undefined;
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    if (!arg) {
+      continue;
+    }
+    const lower = arg.toLowerCase();
+    if (lower === '--note') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --note.');
+        process.exit(1);
+      }
+      noteText = rest[i + 1];
+      i += 1;
+      continue;
+    }
+    if (lower.startsWith('--note=')) {
+      noteText = arg.slice(arg.indexOf('=') + 1);
+      continue;
+    }
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  let encounter = requireEncounterState();
+  let caster: EncounterActor;
+  let target: EncounterActor;
+  try {
+    caster = findActorByIdentifier(encounter, casterIdentifierRaw);
+    target = findActorByIdentifier(encounter, targetIdentifierRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const source = `conc:${caster.id}:Hunter's Mark`;
+  for (const actor of Object.values(encounter.actors)) {
+    const tags = actor.tags ?? [];
+    for (const tag of tags) {
+      if (tag.source === source) {
+        encounter = encounterRemoveActorTag(encounter, actor.id, tag.id);
+        console.log(`Removed tag ${tag.id} from ${actor.name}: "Hunter's Mark"`);
+      }
+    }
+  }
+
+  encounter = startConcentration(encounter, {
+    casterId: caster.id,
+    spellName: "Hunter's Mark",
+    targetId: target.id,
+  });
+
+  const tag: Omit<ActorTag, 'id' | 'addedAtRound'> = {
+    text: "Hunter's Mark",
+    note: noteText ?? 'Add 1d6 to your weapon damage rolls against this target',
+    source,
+  };
+  encounter = encounterAddActorTag(encounter, target.id, tag);
+
+  saveEncounter(encounter);
+  console.log(`Started concentration: Hunter's Mark (${caster.name}) → target ${target.name}`);
+  console.log(`Added tag to ${target.name}: "Hunter's Mark" [${source}]`);
+  process.exit(0);
+}
+
 function requireConditionName(raw: string | undefined): Condition {
   if (!raw) {
     console.error(`Condition name is required. Expected one of: ${CONDITION_NAMES.join(', ')}`);
@@ -3767,6 +3845,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'xp') {
     handleEncounterXpCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'mark') {
+    handleEncounterMarkCommand(rest);
     return;
   }
 
