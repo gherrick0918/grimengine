@@ -10,3 +10,9 @@ dist/
 coverage/
 .DS_Store
 .data/
+!.data/
+.data/*
+!.data/.gitkeep
+!.data/characters/
+.data/characters/*
+!.data/characters/.gitkeep
