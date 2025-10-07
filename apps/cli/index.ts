@@ -57,6 +57,7 @@ import {
   startConcentration,
   endConcentration,
   getConcentration,
+  startHuntersMark,
   concentrationDCFromDamage,
   rollCoinsForCR,
   totalXP,
@@ -124,6 +125,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- spell fetch "<name>"');
   console.log('  pnpm dev -- spell list');
   console.log('  pnpm dev -- spell show "<name>"');
+  console.log('  pnpm dev -- hm "<TargetName>"');
   console.log('  pnpm dev -- character load "<path.json>"');
   console.log('  pnpm dev -- character load-name "<name>"');
   console.log('  pnpm dev -- character show');
@@ -541,6 +543,70 @@ function maybeStartPcConcentration(
 
   const nextState = startConcentration(state, entry);
   return { state: nextState, caster: casterActor, entry };
+}
+
+function handleHuntersMarkCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- hm "<TargetName>"');
+    process.exit(1);
+  }
+
+  const encounter = loadEncounter();
+  if (!encounter) {
+    console.error('No encounter in progress.');
+    console.error('Try: encounter start; add actors; hm "<Target>".');
+    process.exit(1);
+  }
+
+  const character = loadCharacter();
+  if (!character) {
+    console.error('No character loaded. Use `pnpm dev -- character load-name "<Name>"` first.');
+    process.exit(1);
+  }
+
+  const caster = findPcActorByName(encounter, character.name);
+  if (!caster) {
+    console.error(`Loaded character ${character.name} is not part of the current encounter.`);
+    console.error('Use `pnpm dev -- encounter add pc "<Name>"` to add them.');
+    process.exit(1);
+  }
+
+  const targetIdentifier = rawArgs.join(' ').trim();
+  if (!targetIdentifier) {
+    console.error('Usage: pnpm dev -- hm "<TargetName>"');
+    process.exit(1);
+  }
+
+  let target: EncounterActor;
+  try {
+    target = findActorByIdentifier(encounter, targetIdentifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error(`No actor matches "${targetIdentifier}".`);
+    }
+    console.error('Use `pnpm dev -- encounter list` to view participants.');
+    process.exit(1);
+    return;
+  }
+
+  let nextState: EncounterState;
+  try {
+    nextState = startHuntersMark(encounter, caster.id, target.id);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error('Failed to apply Hunter\'s Mark.');
+    }
+    process.exit(1);
+    return;
+  }
+
+  saveEncounter(nextState);
+  console.log(`Hunter's Mark applied: ${caster.name} → ${target.name} (concentration started).`);
+  process.exit(0);
 }
 
 function sortActorsForListing(state: EncounterState): EncounterActor[] {
@@ -5000,6 +5066,11 @@ async function main(): Promise<void> {
 
   if (command === 'monster') {
     await handleMonsterCommand(rest);
+    return;
+  }
+
+  if (command === 'hm' || command === 'hunters-mark') {
+    handleHuntersMarkCommand(rest);
     return;
   }
 
