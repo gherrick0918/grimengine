@@ -1,0 +1,21 @@
+{
+  "name": "Kara",
+  "level": 3,
+  "xp": 900,
+  "abilities": { "STR": 12, "DEX": 16, "CON": 14, "INT": 10, "WIS": 14, "CHA": 8 },
+  "proficiencies": {
+    "weapons": { "simple": true, "martial": true },
+    "saves": ["STR", "DEX"],
+    "skills": ["Athletics", "Perception", "Stealth", "Survival"],
+    "expertise": []
+  },
+  "equipped": {
+    "armor": "Studded Leather",
+    "shield": false,
+    "weapon": "Longbow",
+    "hitDie": "d10"
+  },
+  "slots": {
+    "max": { "1": 3 }
+  }
+}
