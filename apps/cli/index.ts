@@ -59,6 +59,7 @@ import {
   getConcentration,
   startBless,
   startHuntersMark,
+  remindersFor,
   concentrationDCFromDamage,
   rollCoinsForCR,
   totalXP,
@@ -80,6 +81,7 @@ import {
   type CoinBundle,
   type CastResult,
   type Condition,
+  type ReminderEvent,
 } from '@grimengine/core';
 import { WEAPONS, getWeaponByName } from '@grimengine/rules-srd/weapons';
 import { getArmorByName, SHIELD } from '@grimengine/rules-srd/armor';
@@ -169,6 +171,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter concentration check "<casterIdOrName>" <damage> [--seed <value>]');
   console.log('  pnpm dev -- encounter mark "<rangerIdOrName>" "<targetIdOrName>" [--note "<detail>"]');
   console.log('  pnpm dev -- encounter bless "<casterIdOrName>" "A,B,C"');
+  console.log('  pnpm dev -- encounter remind "<Attacker>" ["<Target>"] [--event attack|save|check]');
   console.log('  pnpm dev -- encounter condition add "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition remove "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition list');
@@ -402,6 +405,13 @@ function normalizeSkillName(raw: string): SkillName | undefined {
 function parseConditionName(raw: string): Condition | undefined {
   const target = raw.trim().toLowerCase();
   return CONDITION_NAMES.find((condition) => condition === target);
+}
+
+const REMINDER_EVENTS: ReminderEvent[] = ['attack', 'save', 'check'];
+
+function parseReminderEvent(raw: string): ReminderEvent | undefined {
+  const normalized = raw.trim().toLowerCase();
+  return REMINDER_EVENTS.find((event) => event === normalized);
 }
 
 setCharacterWeaponLookup(getWeaponByName);
@@ -2822,6 +2832,102 @@ function handleEncounterConcentrationCommand(rawArgs: string[]): void {
   process.exit(1);
 }
 
+function handleEncounterRemindCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- encounter remind "<Attacker>" ["<Target>"] [--event attack|save|check]');
+    process.exit(1);
+  }
+
+  const [attackerIdentifier, ...rest] = rawArgs;
+  if (!attackerIdentifier) {
+    console.error('Attacker identifier is required for encounter remind.');
+    process.exit(1);
+  }
+
+  let targetIdentifier: string | undefined;
+  let optionStartIndex = 0;
+  if (rest[0] && !rest[0].startsWith('--')) {
+    targetIdentifier = rest[0];
+    optionStartIndex = 1;
+  }
+
+  let event: ReminderEvent = 'attack';
+  const optionArgs = rest.slice(optionStartIndex);
+
+  for (let i = 0; i < optionArgs.length; i += 1) {
+    const arg = optionArgs[i];
+    if (!arg) {
+      continue;
+    }
+
+    const lower = arg.toLowerCase();
+    if (lower === '--event') {
+      if (i + 1 >= optionArgs.length) {
+        console.error('Expected value after --event.');
+        process.exit(1);
+      }
+      const value = optionArgs[i + 1];
+      const parsed = parseReminderEvent(value);
+      if (!parsed) {
+        console.error(`Unknown reminder event: ${value}. Expected one of: ${REMINDER_EVENTS.join(', ')}`);
+        process.exit(1);
+      }
+      event = parsed;
+      i += 1;
+      continue;
+    }
+
+    if (lower.startsWith('--event=')) {
+      const value = arg.slice('--event='.length);
+      const parsed = parseReminderEvent(value);
+      if (!parsed) {
+        console.error(`Unknown reminder event: ${value}. Expected one of: ${REMINDER_EVENTS.join(', ')}`);
+        process.exit(1);
+      }
+      event = parsed;
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  const encounter = requireEncounterState();
+  let attacker: EncounterActor;
+  try {
+    attacker = findActorByIdentifier(encounter, attackerIdentifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  let target: EncounterActor | undefined;
+  if (targetIdentifier) {
+    try {
+      target = findActorByIdentifier(encounter, targetIdentifier);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(error.message);
+      }
+      process.exit(1);
+      return;
+    }
+  }
+
+  const reminderLines = remindersFor(encounter, attacker.id, target?.id ?? null, event);
+  if (reminderLines.length === 0) {
+    console.log('No reminders.');
+  } else {
+    reminderLines.forEach((line) => {
+      console.log(line);
+    });
+  }
+
+  process.exit(0);
+}
+
 function handleEncounterBlessCommand(rawArgs: string[]): void {
   if (rawArgs.length < 2) {
     console.error('Usage: pnpm dev -- encounter bless "<casterIdOrName>" "A,B,C"');
@@ -4036,6 +4142,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'mark') {
     handleEncounterMarkCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'remind') {
+    handleEncounterRemindCommand(rest);
     return;
   }
 

@@ -120,3 +120,5 @@ export { castSpell, chooseCastingAbility, spellSaveDC, diceForCharacterLevel, di
 export type { CastOptions, CastResult, NormalizedSpell } from './spells.js';
 export { startHuntersMark, endHuntersMark } from './spells/huntersMark.js';
 export { startBless, endBless } from './spells/bless.js';
+export { remindersFor } from './reminders.js';
+export type { ReminderEvent } from './reminders.js';
