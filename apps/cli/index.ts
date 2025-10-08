@@ -104,6 +104,7 @@ import { clearEncounter, loadEncounter, saveEncounter } from './encounterSession
 import { deleteEncounterByName, listEncounterSaves, loadEncounterByName, saveEncounterAs } from './enc-session';
 import { clearCharacter, loadCharacter, saveCharacter } from './session';
 import { listVaultNames, loadFromVault, saveToVault } from './char-vault';
+import { getActorIdByName } from './lib/resolve';
 
 function showUsage(): void {
   console.log('Usage:');
@@ -4176,6 +4177,29 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   }
 
   if (subcommand === 'attack') {
+    if (rest.length === 2) {
+      const encounter = loadEncounter();
+      if (encounter) {
+        try {
+          const attackerId = getActorIdByName(encounter, rest[0]!);
+          const defenderId = getActorIdByName(encounter, rest[1]!);
+          handleEncounterAttackCommand([attackerId, defenderId]);
+          return;
+        } catch (error) {
+          const attackerIsId = Boolean(encounter.actors[rest[0]!]);
+          const defenderIsId = Boolean(encounter.actors[rest[1]!]);
+          if (!attackerIsId || !defenderIsId) {
+            if (error instanceof Error) {
+              console.error(error.message);
+            } else {
+              console.error(String(error));
+            }
+            process.exit(1);
+          }
+        }
+      }
+    }
+
     handleEncounterAttackCommand(rest);
     return;
   }
