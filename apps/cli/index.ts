@@ -2765,6 +2765,11 @@ function handleEncounterConcentrationCheckCommand(rawArgs: string[]): void {
     `Concentration check for ${caster.name} (spell: ${entry.spellName}) — damage ${damage} → DC ${dc}.`,
   );
 
+  const reminderLines = remindersFor(encounter, caster.id, null, 'save');
+  for (const line of reminderLines) {
+    console.log(line);
+  }
+
   let success = false;
   let total = 0;
   let rolls: number[] = [];
@@ -3885,6 +3890,8 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
     ? 'disadvantage'
     : 'normal';
 
+  const reminderLines = remindersFor(encounter, attacker.id, defender.id, 'attack');
+
   const result = encounterActorAttack(encounter, attacker.id, defender.id, {
     advantage,
     disadvantage,
@@ -3899,6 +3906,9 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
   console.log(`Mode: ${effectiveMode} (conditions: ${conditionSummary})`);
   console.log(`Advantage state: ${finalAdvantage}`);
   const outcome = getAttackOutcome(result.attack);
+  for (const line of reminderLines) {
+    console.log(line);
+  }
   console.log(`Attack: ${result.attack.expression}`);
   const rollsLine = `Rolls: [${result.attack.d20s.join(', ')}] → natural ${result.attack.natural} → total ${result.attack.total}`;
   console.log(outcome ? `${rollsLine} → ${outcome}` : rollsLine);
