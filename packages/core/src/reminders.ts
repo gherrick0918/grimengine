@@ -1,13 +1,86 @@
-import type { EncounterState } from './encounter.js';
+import type { ActorTag, EncounterState } from './encounter.js';
 
 export type ReminderEvent = 'attack' | 'save' | 'check';
 
-function blessSourceKeys(casterId: string): string[] {
-  return [`conc:${casterId}:bless`, `conc:${casterId}:Bless`, casterId];
+const BLESS_KEY = 'spell:bless';
+const HUNTERS_MARK_KEY = "spell:hunters-mark";
+
+function normalizeText(text: string | undefined): string | undefined {
+  return text ? text.toLowerCase().replace(/[^a-z0-9]+/g, '-') : undefined;
 }
 
-function huntersMarkSourceKeys(casterId: string): string[] {
-  return [`conc:${casterId}:hunters-mark`, `conc:${casterId}:Hunter's Mark`];
+function isBlessTag(tag: ActorTag): boolean {
+  const key = tag.key?.toLowerCase();
+  if (key === BLESS_KEY) {
+    return true;
+  }
+  const normalizedText = normalizeText(tag.text);
+  return normalizedText === 'bless';
+}
+
+function hasBlessFromTags(tags: ActorTag[] | undefined): boolean {
+  if (!tags || tags.length === 0) {
+    return false;
+  }
+  return tags.some((tag) => isBlessTag(tag));
+}
+
+function hasBlessFromConcentration(state: EncounterState, actorId: string): boolean {
+  const entries = state.concentration ? Object.values(state.concentration) : [];
+  for (const entry of entries) {
+    if (entry.spellName.toLowerCase() !== 'bless') {
+      continue;
+    }
+    if (entry.targetIds && entry.targetIds.includes(actorId)) {
+      return true;
+    }
+    if (entry.targetId && entry.targetId === actorId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isHuntersMarkTag(tag: ActorTag, expectedSources: Set<string>): boolean {
+  const key = tag.key?.toLowerCase();
+  if (key && key !== HUNTERS_MARK_KEY) {
+    return false;
+  }
+
+  const normalizedText = normalizeText(tag.text);
+  if (!key && normalizedText !== 'hunter-s-mark') {
+    return false;
+  }
+
+  if (!tag.source) {
+    return true;
+  }
+  return expectedSources.has(tag.source);
+}
+
+function hasHuntersMarkFromTags(tags: ActorTag[] | undefined, expectedSources: Set<string>): boolean {
+  if (!tags || tags.length === 0) {
+    return false;
+  }
+
+  return tags.some((tag) => isHuntersMarkTag(tag, expectedSources));
+}
+
+function hasHuntersMarkFromConcentration(state: EncounterState, casterId: string, targetId: string): boolean {
+  const entry = state.concentration?.[casterId];
+  if (!entry) {
+    return false;
+  }
+  if (entry.spellName.toLowerCase() !== "hunter's mark") {
+    return false;
+  }
+  if (entry.targetId && entry.targetId === targetId) {
+    return true;
+  }
+  if (entry.targetIds && entry.targetIds.includes(targetId)) {
+    return true;
+  }
+  return false;
 }
 
 export function remindersFor(
@@ -22,9 +95,9 @@ export function remindersFor(
   }
 
   const reminders: string[] = [];
-  const attackerTags = attacker.tags ?? [];
+  const blessActive = hasBlessFromTags(attacker.tags) || hasBlessFromConcentration(encounter, attackerId);
 
-  if (attackerTags.some((tag) => tag.key === 'spell:bless')) {
+  if (blessActive) {
     if (event === 'attack') {
       reminders.push('Reminder: Bless (+d4 to attack roll)');
     } else if (event === 'save') {
@@ -36,12 +109,11 @@ export function remindersFor(
 
   if (targetId) {
     const target = encounter.actors[targetId];
-    const targetTags = target?.tags ?? [];
-    const expectedSources = new Set(huntersMarkSourceKeys(attackerId));
+    const expectedSources = new Set([`conc:${attackerId}:hunters-mark`, `conc:${attackerId}:Hunter's Mark`]);
 
-    const hasHuntersMark = targetTags.some(
-      (tag) => tag.key === 'spell:hunters-mark' && (!tag.source || expectedSources.has(tag.source)),
-    );
+    const hasHuntersMark =
+      hasHuntersMarkFromTags(target?.tags, expectedSources) ||
+      hasHuntersMarkFromConcentration(encounter, attackerId, targetId);
 
     if (hasHuntersMark && event === 'attack') {
       const targetName = target?.name ?? 'target';
