@@ -68,4 +68,28 @@ describe('remindersFor', () => {
     const otherEvent = remindersFor(encounter, 'pc-3', 'pc-2', 'save');
     expect(otherEvent).not.toContain("Reminder: Hunter's Mark (+1d6 on hit vs Borin)");
   });
+
+  it('detects concentration-based reminders when tags are missing', () => {
+    let encounter = setupEncounter();
+    encounter = startBless(encounter, 'pc-2', ['pc-1']);
+    encounter = startHuntersMark(encounter, 'pc-3', 'pc-2');
+
+    const blessed = encounter.actors['pc-1'];
+    const marked = encounter.actors['pc-2'];
+
+    encounter = {
+      ...encounter,
+      actors: {
+        ...encounter.actors,
+        'pc-1': blessed ? { ...blessed, tags: [] } : blessed,
+        'pc-2': marked ? { ...marked, tags: [] } : marked,
+      },
+    };
+
+    const blessFromConcentration = remindersFor(encounter, 'pc-1', null, 'attack');
+    expect(blessFromConcentration).toContain('Reminder: Bless (+d4 to attack roll)');
+
+    const huntersMarkFromConcentration = remindersFor(encounter, 'pc-3', 'pc-2', 'attack');
+    expect(huntersMarkFromConcentration).toContain("Reminder: Hunter's Mark (+1d6 on hit vs Borin)");
+  });
 });
