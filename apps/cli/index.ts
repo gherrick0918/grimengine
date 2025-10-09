@@ -72,6 +72,7 @@ import {
   type ActorTag,
   type PlayerActor,
   type MonsterActor,
+  type Side,
   type WeaponProfile,
   type AbilityName,
   type AttackRollResult,
@@ -165,7 +166,9 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter start [--seed <value>]');
   console.log('  pnpm dev -- encounter add pc "<name>"');
   console.log('  pnpm dev -- encounter add monster "<name>" [--count <n>]');
-  console.log('  pnpm dev -- encounter add <goblin|bandit|skeleton> [--n <count>] [--name <BaseName>]');
+  console.log(
+    '  pnpm dev -- encounter add <goblin|bandit|skeleton> [--n <count>] [--name <BaseName>] [--side <party|foe|neutral>]',
+  );
   console.log('  pnpm dev -- encounter list');
   console.log('  pnpm dev -- encounter save "<name>"');
   console.log('  pnpm dev -- encounter ls');
@@ -504,12 +507,17 @@ function cloneWeaponProfile(profile: WeaponProfile): WeaponProfile {
   return { ...profile };
 }
 
-function cloneMonster(template: Omit<MonsterActor, 'id' | 'side'>, id: string, name: string): MonsterActor {
+function cloneMonster(
+  template: Omit<MonsterActor, 'id' | 'side'>,
+  id: string,
+  name: string,
+  side: Side,
+): MonsterActor {
   return {
     ...template,
     id,
     name,
-    side: 'foe',
+    side,
     abilityMods: { ...template.abilityMods },
     attacks: template.attacks.map((attack) => cloneWeaponProfile(attack)),
   };
@@ -852,6 +860,7 @@ function addMonsters(
   template: Omit<MonsterActor, 'id' | 'side'>,
   baseName: string,
   count: number,
+  side: Side = 'foe',
 ): { state: EncounterState; added: MonsterActor[] } {
   const added: MonsterActor[] = [];
   let nextState = state;
@@ -860,7 +869,7 @@ function addMonsters(
   for (let i = 0; i < count; i += 1) {
     const name = `${baseName} #${nextNumber}`;
     const id = generateActorId(nextState, name);
-    const actor = cloneMonster(template, id, name);
+    const actor = cloneMonster(template, id, name, side);
     nextState = addEncounterActor(nextState, actor);
     added.push(actor);
     nextNumber += 1;
@@ -2661,8 +2670,20 @@ async function handleEncounterAddMonsterCommand(rawArgs: string[]): Promise<void
   const { state, added } = addMonsters(encounter, template, template.name, count);
   saveEncounter(state);
   const names = added.map((actor) => `${actor.name} (id=${actor.id})`).join(', ');
-  console.log(`Added ${added.length} ${template.name}${added.length === 1 ? '' : 's'}: ${names}`);
+  const sideLabel = added[0]?.side ?? 'foe';
+  console.log(`Added ${added.length} ${template.name}${added.length === 1 ? '' : 's'} on side '${sideLabel}': ${names}`);
   process.exit(0);
+}
+
+function parseSideOption(value: string | undefined): Side {
+  if (value === undefined) {
+    throw new Error('Expected value after --side.');
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'party' || normalized === 'foe' || normalized === 'neutral') {
+    return normalized;
+  }
+  throw new Error('Invalid side. Expected one of: party, foe, neutral.');
 }
 
 function handleEncounterAddSampleMonsterCommand(type: string, rawArgs: string[]): void {
@@ -2675,6 +2696,7 @@ function handleEncounterAddSampleMonsterCommand(type: string, rawArgs: string[])
 
   let count = 1;
   let baseNameOverride: string | undefined;
+  let side: Side = 'foe';
 
   try {
     for (let i = 0; i < rawArgs.length; i += 1) {
@@ -2710,6 +2732,17 @@ function handleEncounterAddSampleMonsterCommand(type: string, rawArgs: string[])
         continue;
       }
 
+      if (lower.startsWith('--side=')) {
+        side = parseSideOption(arg.slice('--side='.length));
+        continue;
+      }
+
+      if (lower === '--side') {
+        side = parseSideOption(rawArgs[i + 1]);
+        i += 1;
+        continue;
+      }
+
       console.warn(`Ignoring unknown argument: ${arg}`);
     }
   } catch (error) {
@@ -2727,12 +2760,12 @@ function handleEncounterAddSampleMonsterCommand(type: string, rawArgs: string[])
 
   const encounter = requireEncounterState();
   const baseName = baseNameOverride?.trim() ? baseNameOverride.trim() : template.name;
-  const { state, added } = addMonsters(encounter, template, baseName, count);
+  const { state, added } = addMonsters(encounter, template, baseName, count, side);
   saveEncounter(state);
 
   const summaryName = added.length === 1 ? baseName : `${baseName}s`;
   const names = added.map((actor) => `${actor.name} (id=${actor.id})`).join(', ');
-  console.log(`Added ${added.length} ${summaryName}: ${names}`);
+  console.log(`Added ${added.length} ${summaryName} on side '${side}': ${names}`);
   process.exit(0);
 }
 

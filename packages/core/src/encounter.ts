@@ -13,7 +13,7 @@ import { resolveAttack } from './combat.js';
 import { roll } from './dice.js';
 import type { CoinBundle } from './loot.js';
 
-export type Side = 'party' | 'foe';
+export type Side = 'party' | 'foe' | 'neutral';
 
 export interface ActorTag {
   id: string;
