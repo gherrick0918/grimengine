@@ -63,6 +63,7 @@ import {
   startHuntersMark,
   remindersFor,
   concentrationDCFromDamage,
+  concentrationReminderLinesForDamage,
   rollCoinsForCR,
   totalXP,
   type EncounterState,
@@ -1658,8 +1659,11 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
     }
 
     let nextEncounter = encounter;
+    let reminderLines: string[] = [];
     if (castResult.damage && (attack.hit || attack.isCrit)) {
-      nextEncounter = applyEncounterDamage(nextEncounter, target.id, castResult.damage.final);
+      const appliedDamage = castResult.damage.final;
+      nextEncounter = applyEncounterDamage(nextEncounter, target.id, appliedDamage);
+      reminderLines = concentrationReminderLinesForDamage(nextEncounter, target.id, appliedDamage);
     }
     if (resolvedSpell.concentration) {
       const concentrationResult = maybeStartPcConcentration(nextEncounter, character, resolvedSpell, target);
@@ -1676,6 +1680,7 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
     const updated = nextEncounter.actors[target.id] ?? target;
     const status = nextEncounter.defeated.has(target.id) ? 'DEFEATED' : 'active';
     console.log(`Target ${updated.name} now has ${formatHitPoints(updated)} HP (${status}).`);
+    reminderLines.forEach((line) => console.log(line));
 
     logSlotSpend();
     notes.forEach((note) => console.log(`Note: ${note}`));
@@ -1720,8 +1725,10 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
       }
 
       let nextEncounter = encounter ?? requireEncounterState();
+      let reminderLines: string[] = [];
       if (finalDamage > 0) {
         nextEncounter = applyEncounterDamage(nextEncounter, target.id, finalDamage);
+        reminderLines = concentrationReminderLinesForDamage(nextEncounter, target.id, finalDamage);
       }
       if (resolvedSpell.concentration) {
         const concentrationResult = maybeStartPcConcentration(nextEncounter, character, resolvedSpell, target);
@@ -1737,6 +1744,7 @@ async function handleCharacterCastCommand(rawArgs: string[]): Promise<void> {
       const updated = nextEncounter.actors[target.id] ?? target;
       const status = nextEncounter.defeated.has(updated.id) ? 'DEFEATED' : 'active';
       console.log(`Target ${updated.name} now has ${formatHitPoints(updated)} HP (${status}).`);
+      reminderLines.forEach((line) => console.log(line));
 
       logSlotSpend();
       notes.forEach((note) => console.log(`Note: ${note}`));
@@ -4094,6 +4102,17 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
     parts.push(`→ base ${result.damage.baseTotal}`);
     parts.push(`→ final ${result.damage.finalTotal}`);
     console.log(parts.join(' '));
+  }
+
+  const damageApplied =
+    result.damage && (result.attack.isCrit || result.attack.hit === true)
+      ? result.damage.finalTotal
+      : 0;
+  if (damageApplied > 0) {
+    const reminderLines = concentrationReminderLinesForDamage(encounter, defender.id, damageApplied);
+    for (const line of reminderLines) {
+      console.log(line);
+    }
   }
 
   const updatedDefender = encounter.actors[defender.id];
