@@ -156,6 +156,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter start [--seed <value>]');
   console.log('  pnpm dev -- encounter add pc "<name>"');
   console.log('  pnpm dev -- encounter add monster "<name>" [--count <n>]');
+  console.log('  pnpm dev -- encounter add <goblin|bandit|skeleton> [--n <count>] [--name <BaseName>]');
   console.log('  pnpm dev -- encounter list');
   console.log('  pnpm dev -- encounter save "<name>"');
   console.log('  pnpm dev -- encounter list-saves');
@@ -504,6 +505,39 @@ function cloneMonster(template: Omit<MonsterActor, 'id' | 'side'>, id: string, n
     attacks: template.attacks.map((attack) => cloneWeaponProfile(attack)),
   };
 }
+
+const SAMPLE_MONSTER_TEMPLATES: Record<string, Omit<MonsterActor, 'id' | 'side'>> = {
+  goblin: {
+    type: 'monster',
+    name: 'Goblin',
+    ac: 15,
+    hp: 7,
+    maxHp: 7,
+    abilityMods: { STR: -1, DEX: 2, WIS: -1, CHA: -1 },
+    proficiencyBonus: 2,
+    attacks: [{ name: 'Scimitar', attackMod: 4, damageExpr: '1d6+2' }],
+  },
+  bandit: {
+    type: 'monster',
+    name: 'Bandit',
+    ac: 12,
+    hp: 11,
+    maxHp: 11,
+    abilityMods: { STR: 1, DEX: 1 },
+    proficiencyBonus: 2,
+    attacks: [{ name: 'Scimitar', attackMod: 3, damageExpr: '1d6+1' }],
+  },
+  skeleton: {
+    type: 'monster',
+    name: 'Skeleton',
+    ac: 13,
+    hp: 13,
+    maxHp: 13,
+    abilityMods: { DEX: 2, CON: 2, WIS: -1, CHA: -3 },
+    proficiencyBonus: 2,
+    attacks: [{ name: 'Shortsword', attackMod: 4, damageExpr: '1d6+2' }],
+  },
+};
 
 function formatHitPoints(actor: EncounterActor): string {
   return `${actor.hp}/${actor.maxHp}`;
@@ -2579,12 +2613,23 @@ async function handleEncounterAddMonsterCommand(rawArgs: string[]): Promise<void
 }
 
 async function handleEncounterAddCommand(rawArgs: string[]): Promise<void> {
-  if (rawArgs.length < 2) {
+  if (rawArgs.length === 0) {
     console.error('Usage: pnpm dev -- encounter add <pc|monster> "<name>" [...]');
     process.exit(1);
   }
 
   const [type, ...rest] = rawArgs;
+  const sampleKey = type.toLowerCase();
+  if (sampleKey in SAMPLE_MONSTER_TEMPLATES) {
+    handleEncounterAddSampleMonsterCommand(sampleKey, rest);
+    return;
+  }
+
+  if (rawArgs.length < 2) {
+    console.error('Usage: pnpm dev -- encounter add <pc|monster> "<name>" [...]');
+    process.exit(1);
+  }
+
   if (type === 'pc') {
     const name = rest[0];
     if (!name) {
@@ -2602,6 +2647,69 @@ async function handleEncounterAddCommand(rawArgs: string[]): Promise<void> {
 
   console.error(`Unknown encounter add type: ${type}`);
   process.exit(1);
+}
+
+function handleEncounterAddSampleMonsterCommand(type: string, rawArgs: string[]): void {
+  const template = SAMPLE_MONSTER_TEMPLATES[type];
+  if (!template) {
+    console.error('Unknown sample monster type.');
+    process.exit(1);
+  }
+
+  let count = 1;
+  let baseName: string | undefined;
+
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const arg = rawArgs[i];
+    if (arg === '--n') {
+      if (i + 1 >= rawArgs.length) {
+        console.error('Expected value after --n.');
+        process.exit(1);
+      }
+      count = parseSampleMonsterCount(rawArgs[i + 1]);
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--n=')) {
+      count = parseSampleMonsterCount(arg.slice('--n='.length));
+      continue;
+    }
+
+    if (arg === '--name') {
+      if (i + 1 >= rawArgs.length) {
+        console.error('Expected value after --name.');
+        process.exit(1);
+      }
+      baseName = rawArgs[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--name=')) {
+      baseName = arg.slice('--name='.length);
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  const resolvedBaseName = baseName?.trim() || template.name;
+  const encounter = requireEncounterState();
+  const { state, added } = addMonsters(encounter, template, resolvedBaseName, count);
+  saveEncounter(state);
+  const names = added.map((actor) => `${actor.name} (id=${actor.id})`).join(', ');
+  console.log(`Added ${added.length} ${resolvedBaseName}${added.length === 1 ? '' : 's'}: ${names}`);
+  process.exit(0);
+}
+
+function parseSampleMonsterCount(raw: string): number {
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed < 1) {
+    console.error(`Invalid count: ${raw}`);
+    process.exit(1);
+  }
+  return parsed;
 }
 
 function handleEncounterConcentrationStartCommand(rawArgs: string[]): void {
