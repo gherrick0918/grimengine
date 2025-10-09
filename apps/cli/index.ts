@@ -34,6 +34,7 @@ import {
   derivedAC,
   derivedMaxHP,
   derivedDefaultWeaponProfile,
+  normalizeCharacter,
   SKILL_ABILITY,
   createEncounter,
   addActor as addEncounterActor,
@@ -818,12 +819,17 @@ function formatActorLine(state: EncounterState, actor: EncounterActor, currentId
 }
 
 function buildPlayerActor(state: EncounterState, name: string, character: Character): PlayerActor {
-  const mods = abilityMods(character.abilities);
-  const pb = proficiencyBonusForLevel(character.level);
+  const normalized = normalizeCharacter(character);
+  const mods = abilityMods(normalized.abilities);
+  const pb =
+    typeof normalized.proficiencyBonus === 'number' && Number.isFinite(normalized.proficiencyBonus)
+      ? normalized.proficiencyBonus
+      : proficiencyBonusForLevel(normalized.level);
   const id = generateActorId(state, name);
-  const ac = derivedAC(character);
-  const maxHp = derivedMaxHP(character);
-  const { profile: defaultWeapon } = resolveDefaultWeaponInfo(character, mods, pb);
+  const ac = typeof normalized.ac === 'number' ? normalized.ac : derivedAC(normalized);
+  const maxHp = normalized.hp?.max ?? derivedMaxHP(normalized);
+  const currentHp = normalized.hp?.current ?? maxHp;
+  const { profile: defaultWeapon } = resolveDefaultWeaponInfo(normalized, mods, pb);
 
   return {
     id,
@@ -831,7 +837,7 @@ function buildPlayerActor(state: EncounterState, name: string, character: Charac
     side: 'party',
     type: 'pc',
     ac,
-    hp: maxHp,
+    hp: currentHp,
     maxHp,
     abilityMods: mods,
     proficiencyBonus: pb,
@@ -1112,6 +1118,67 @@ function handleCharacterLoadCommand(path: string | undefined): void {
       character.xp = Math.floor(xpValue);
     }
 
+    const acRaw = (data as { ac?: unknown }).ac;
+    if (acRaw !== undefined) {
+      const acValue = Number(acRaw);
+      if (!Number.isFinite(acValue)) {
+        throw new Error('Character ac must be a finite number when provided.');
+      }
+      character.ac = acValue;
+    }
+
+    const pbRaw = (data as { proficiencyBonus?: unknown }).proficiencyBonus;
+    if (pbRaw !== undefined) {
+      const pbValue = Number(pbRaw);
+      if (!Number.isFinite(pbValue)) {
+        throw new Error('Character proficiencyBonus must be a finite number when provided.');
+      }
+      character.proficiencyBonus = pbValue;
+    }
+
+    const hpRaw = (data as { hp?: unknown }).hp;
+    if (hpRaw !== undefined) {
+      if (hpRaw === null || typeof hpRaw !== 'object' || Array.isArray(hpRaw)) {
+        throw new Error('Character hp must be an object when provided.');
+      }
+      const record = hpRaw as Record<string, unknown>;
+      const hp: NonNullable<Character['hp']> = {};
+
+      if (record.max !== undefined) {
+        const value = Number(record.max);
+        if (!Number.isFinite(value)) {
+          throw new Error('Character hp.max must be a finite number when provided.');
+        }
+        hp.max = value;
+      }
+
+      if (record.current !== undefined) {
+        const value = Number(record.current);
+        if (!Number.isFinite(value)) {
+          throw new Error('Character hp.current must be a finite number when provided.');
+        }
+        hp.current = value;
+      }
+
+      if (record.temp !== undefined) {
+        const value = Number(record.temp);
+        if (!Number.isFinite(value)) {
+          throw new Error('Character hp.temp must be a finite number when provided.');
+        }
+        hp.temp = value;
+      }
+
+      character.hp = hp;
+    }
+
+    const sensesRaw = (data as { senses?: unknown }).senses;
+    if (sensesRaw !== undefined) {
+      if (sensesRaw === null || typeof sensesRaw !== 'object' || Array.isArray(sensesRaw)) {
+        throw new Error('Character senses must be an object when provided.');
+      }
+      character.senses = { ...(sensesRaw as Record<string, unknown>) };
+    }
+
     const equippedRaw = (data as { equipped?: unknown }).equipped;
     if (equippedRaw !== undefined) {
       if (equippedRaw === null || typeof equippedRaw !== 'object' || Array.isArray(equippedRaw)) {
@@ -1157,8 +1224,12 @@ function handleCharacterLoadCommand(path: string | undefined): void {
       }
     }
 
-    const pb = proficiencyBonusForLevel(character.level);
-    saveCharacter(character);
+    const normalized = normalizeCharacter(character);
+    saveCharacter(normalized);
+    const pb =
+      typeof normalized.proficiencyBonus === 'number' && Number.isFinite(normalized.proficiencyBonus)
+        ? normalized.proficiencyBonus
+        : proficiencyBonusForLevel(normalized.level);
     console.log(`Loaded character ${character.name} (lvl ${character.level}). PB ${formatModifier(pb)}`);
     process.exit(0);
   } catch (error) {

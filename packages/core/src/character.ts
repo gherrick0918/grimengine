@@ -54,6 +54,17 @@ export interface Equipped {
   hitDie?: 'd6' | 'd8' | 'd10' | 'd12';
 }
 
+export interface CharacterHitPoints {
+  max?: number;
+  current?: number;
+  temp?: number;
+}
+
+export interface CharacterSenses {
+  passivePerception?: number;
+  [key: string]: unknown;
+}
+
 export interface SpellSlots {
   max: Record<number, number>;
   remaining: Record<number, number>;
@@ -67,6 +78,10 @@ export interface Character {
   proficiencies?: CharacterProficiencies;
   equipped?: Equipped;
   slots?: SpellSlots;
+  ac?: number;
+  hp?: CharacterHitPoints;
+  proficiencyBonus?: number;
+  senses?: CharacterSenses;
 }
 
 function createZeroedSlots(): Record<number, number> {
@@ -313,6 +328,76 @@ export function derivedMaxHP(character: Character): number {
   }
 
   return Math.max(hp, 1);
+}
+
+export function normalizeCharacter(raw: Character): Character {
+  const normalized: Character = {
+    ...raw,
+    abilities: { ...raw.abilities },
+  };
+
+  if (raw.proficiencies) {
+    normalized.proficiencies = {
+      ...raw.proficiencies,
+      weapons: raw.proficiencies.weapons ? { ...raw.proficiencies.weapons } : undefined,
+      saves: raw.proficiencies.saves ? [...raw.proficiencies.saves] : undefined,
+      skills: raw.proficiencies.skills ? [...raw.proficiencies.skills] : undefined,
+      expertise: raw.proficiencies.expertise ? [...raw.proficiencies.expertise] : undefined,
+    };
+  }
+
+  if (raw.equipped) {
+    normalized.equipped = { ...raw.equipped };
+  }
+
+  if (raw.slots) {
+    normalized.slots = {
+      max: { ...(raw.slots.max ?? {}) },
+      remaining: { ...(raw.slots.remaining ?? raw.slots.max ?? {}) },
+    };
+  }
+
+  const dexScore = Number.isFinite(raw.abilities?.DEX) ? raw.abilities.DEX : 10;
+  const dexMod = Math.floor(((dexScore as number) - 10) / 2);
+  if (typeof raw.ac === 'number' && Number.isFinite(raw.ac)) {
+    normalized.ac = raw.ac;
+  } else {
+    normalized.ac = 10 + dexMod;
+  }
+
+  const hpSource = raw.hp ?? {};
+  const hpMax =
+    typeof hpSource.max === 'number' && Number.isFinite(hpSource.max)
+      ? hpSource.max
+      : typeof raw.level === 'number' && Number.isFinite(raw.level) && raw.level > 0
+        ? Math.max(1, Math.trunc(raw.level) * 8)
+        : 1;
+  const hpCurrent =
+    typeof hpSource.current === 'number' && Number.isFinite(hpSource.current)
+      ? hpSource.current
+      : hpMax;
+  const hpTemp =
+    typeof hpSource.temp === 'number' && Number.isFinite(hpSource.temp) ? hpSource.temp : 0;
+  normalized.hp = { max: hpMax, current: hpCurrent, temp: hpTemp };
+
+  if (typeof raw.proficiencyBonus === 'number' && Number.isFinite(raw.proficiencyBonus)) {
+    normalized.proficiencyBonus = raw.proficiencyBonus;
+  } else if (typeof raw.level === 'number' && Number.isFinite(raw.level) && raw.level > 0) {
+    normalized.proficiencyBonus = proficiencyBonusForLevel(Math.trunc(raw.level));
+  }
+
+  const sensesSource = raw.senses && typeof raw.senses === 'object' ? raw.senses : undefined;
+  if (sensesSource) {
+    normalized.senses = { ...sensesSource };
+  }
+  const passive = sensesSource?.passivePerception;
+  if (!(typeof passive === 'number' && Number.isFinite(passive))) {
+    const wisScore = Number.isFinite(raw.abilities?.WIS) ? raw.abilities.WIS : 10;
+    const wisMod = Math.floor(((wisScore as number) - 10) / 2);
+    normalized.senses = { ...(normalized.senses ?? {}), passivePerception: 10 + wisMod };
+  }
+
+  return normalized;
 }
 
 export function derivedDefaultWeaponProfile(character: Character):

@@ -52,6 +52,7 @@ export {
   derivedAC,
   derivedMaxHP,
   derivedDefaultWeaponProfile,
+  normalizeCharacter,
   isProficientSave,
   isProficientSkill,
   skillAbility,
@@ -74,6 +75,8 @@ export type {
   CharacterAbilityScores,
   CharacterProficiencies,
   Equipped,
+  CharacterHitPoints,
+  CharacterSenses,
   SkillName,
   SpellSlots,
 } from './character.js';
