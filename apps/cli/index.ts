@@ -61,6 +61,11 @@ import {
   getConcentration,
   startBless,
   startHuntersMark,
+  startGuidance,
+  applyBardicInspiration,
+  clearBardicInspiration,
+  hasBardicInspiration,
+  bardicInspirationDieFromTag,
   remindersFor,
   concentrationDCFromDamage,
   concentrationReminderLinesForDamage,
@@ -185,6 +190,9 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter concentration check "<casterIdOrName>" <damage> [--seed <value>]');
   console.log('  pnpm dev -- encounter mark "<rangerIdOrName>" "<targetIdOrName>" [--note "<detail>"]');
   console.log('  pnpm dev -- encounter bless "<casterIdOrName>" "A,B,C"');
+  console.log('  pnpm dev -- encounter guidance "<casterIdOrName>" "<targetIdOrName>"');
+  console.log('  pnpm dev -- encounter inspire "<bardIdOrName>" "<targetIdOrName>" [--die d6|d8|d10|d12]');
+  console.log('  pnpm dev -- encounter inspire-clear "<targetIdOrName>"');
   console.log('  pnpm dev -- encounter remind "<Attacker>" ["<Target>"] [--event attack|save|check]');
   console.log('  pnpm dev -- encounter condition add "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition remove "<actorIdOrName>" <condition>');
@@ -3231,6 +3239,171 @@ function handleEncounterBlessCommand(rawArgs: string[]): void {
   process.exit(0);
 }
 
+function handleEncounterGuidanceCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error('Usage: pnpm dev -- encounter guidance "<casterIdOrName>" "<targetIdOrName>"');
+    process.exit(1);
+  }
+
+  const [casterIdentifierRaw, targetIdentifierRaw, ...rest] = rawArgs;
+
+  if (rest.length > 0) {
+    console.warn(`Ignoring extra argument(s): ${rest.join(', ')}`);
+  }
+
+  let encounter = requireEncounterState();
+
+  let caster: EncounterActor;
+  let target: EncounterActor;
+  try {
+    caster = findActorByIdentifier(encounter, casterIdentifierRaw);
+    target = findActorByIdentifier(encounter, targetIdentifierRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  try {
+    encounter = startGuidance(encounter, caster.id, target.id);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  saveEncounter(encounter);
+  console.log(`Guidance applied: ${caster.name} → ${target.name} (concentration started)`);
+  process.exit(0);
+}
+
+function handleEncounterInspireCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error(
+      'Usage: pnpm dev -- encounter inspire "<bardIdOrName>" "<targetIdOrName>" [--die d6|d8|d10|d12]',
+    );
+    process.exit(1);
+  }
+
+  const [bardIdentifierRaw, targetIdentifierRaw, ...optionArgs] = rawArgs;
+
+  let requestedDie: string | undefined;
+  for (let i = 0; i < optionArgs.length; i += 1) {
+    const arg = optionArgs[i];
+    if (!arg) {
+      continue;
+    }
+
+    const lower = arg.toLowerCase();
+    if (lower === '--die') {
+      if (i + 1 >= optionArgs.length) {
+        console.error('Expected value after --die.');
+        process.exit(1);
+      }
+      requestedDie = optionArgs[i + 1];
+      i += 1;
+      continue;
+    }
+
+    if (lower.startsWith('--die=')) {
+      requestedDie = arg.slice('--die='.length);
+      continue;
+    }
+
+    console.warn(`Ignoring unknown argument: ${arg}`);
+  }
+
+  let encounter = requireEncounterState();
+
+  let bard: EncounterActor;
+  let target: EncounterActor;
+  try {
+    bard = findActorByIdentifier(encounter, bardIdentifierRaw);
+    target = findActorByIdentifier(encounter, targetIdentifierRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  try {
+    encounter = applyBardicInspiration(encounter, bard.id, target.id, { die: requestedDie });
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const updatedTarget = encounter.actors[target.id];
+  const inspirationTag = updatedTarget?.tags?.find((tag) => {
+    const key = tag.key?.toLowerCase();
+    if (key === 'bardic-inspiration') {
+      return true;
+    }
+    const text = tag.text?.toLowerCase();
+    return text === 'bardic inspiration';
+  });
+  const die = bardicInspirationDieFromTag(inspirationTag);
+
+  saveEncounter(encounter);
+  console.log(`Bardic Inspiration applied: ${bard.name} → ${target.name} (+${die})`);
+  process.exit(0);
+}
+
+function handleEncounterInspireClearCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 1) {
+    console.error('Usage: pnpm dev -- encounter inspire-clear "<targetIdOrName>"');
+    process.exit(1);
+  }
+
+  const [targetIdentifierRaw, ...rest] = rawArgs;
+
+  if (rest.length > 0) {
+    console.warn(`Ignoring extra argument(s): ${rest.join(', ')}`);
+  }
+
+  let encounter = requireEncounterState();
+
+  let target: EncounterActor;
+  try {
+    target = findActorByIdentifier(encounter, targetIdentifierRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const before = encounter.actors[target.id];
+  const hadBefore = hasBardicInspiration(before?.tags);
+
+  encounter = clearBardicInspiration(encounter, target.id);
+
+  const after = encounter.actors[target.id];
+  const hasAfter = hasBardicInspiration(after?.tags);
+
+  saveEncounter(encounter);
+
+  if (hadBefore && !hasAfter) {
+    console.log(`Bardic Inspiration cleared from ${target.name}.`);
+  } else if (!hadBefore) {
+    console.log(`${target.name} had no Bardic Inspiration.`);
+  } else {
+    console.log(`Bardic Inspiration remains on ${target.name}.`);
+  }
+
+  process.exit(0);
+}
+
 function handleEncounterMarkCommand(rawArgs: string[]): void {
   if (rawArgs.length < 2) {
     console.error(
@@ -4376,6 +4549,21 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'bless') {
     handleEncounterBlessCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'guidance') {
+    handleEncounterGuidanceCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'inspire') {
+    handleEncounterInspireCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'inspire-clear') {
+    handleEncounterInspireClearCommand(rest);
     return;
   }
 
