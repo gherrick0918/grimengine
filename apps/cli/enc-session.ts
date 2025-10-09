@@ -7,12 +7,10 @@ interface StoredEncounter extends Omit<EncounterState, 'defeated'> {
 }
 
 const ROOT = join(process.cwd(), '.data', 'encounters');
-const SAVES = join(ROOT, 'saves');
 const CURRENT = join(ROOT, 'current.json');
 
 function ensureDirs(): void {
   mkdirSync(ROOT, { recursive: true });
-  mkdirSync(SAVES, { recursive: true });
 }
 
 function serialize(state: EncounterState): StoredEncounter {
@@ -60,13 +58,13 @@ export function clearCurrentEncounter(): void {
 
 export function saveEncounterAs(name: string, state: EncounterState): string {
   ensureDirs();
-  const filePath = join(SAVES, `${name}.json`);
+  const filePath = join(ROOT, `${name}.json`);
   writeFileSync(filePath, JSON.stringify(serialize(state), null, 2), 'utf-8');
   return filePath;
 }
 
 export function loadEncounterByName(name: string): EncounterState | null {
-  const filePath = join(SAVES, `${name}.json`);
+  const filePath = join(ROOT, `${name}.json`);
   if (!existsSync(filePath)) {
     return null;
   }
@@ -81,7 +79,7 @@ export function loadEncounterByName(name: string): EncounterState | null {
 }
 
 export function deleteEncounterByName(name: string): boolean {
-  const filePath = join(SAVES, `${name}.json`);
+  const filePath = join(ROOT, `${name}.json`);
   if (!existsSync(filePath)) {
     return false;
   }
@@ -95,10 +93,14 @@ export function deleteEncounterByName(name: string): boolean {
 }
 
 export function listEncounterSaves(): string[] {
-  ensureDirs();
-  return readdirSync(SAVES)
-    .filter((file) => file.toLowerCase().endsWith('.json'))
-    .map((file) => file.replace(/\.json$/i, ''));
+  if (!existsSync(ROOT)) {
+    return [];
+  }
+
+  return readdirSync(ROOT)
+    .filter((file) => file.toLowerCase().endsWith('.json') && file.toLowerCase() !== 'current.json')
+    .map((file) => file.replace(/\.json$/i, ''))
+    .sort((a, b) => a.localeCompare(b));
 }
 
 export function saveEncounter(state: EncounterState): void {
