@@ -27,6 +27,19 @@ export const MONSTERS: Omit<MonsterActor, 'id' | 'side'>[] = [
       { name: 'Light Crossbow', attackMod: 3, damageExpr: '1d8+1' },
     ],
   },
+  {
+    type: 'monster',
+    name: 'Skeleton',
+    ac: 13,
+    hp: 13,
+    maxHp: 13,
+    abilityMods: { DEX: 2 },
+    proficiencyBonus: 2,
+    attacks: [
+      { name: 'Shortsword', attackMod: 4, damageExpr: '1d6+2' },
+      { name: 'Shortbow', attackMod: 4, damageExpr: '1d6+2' },
+    ],
+  },
 ];
 
 export function getMonsterByName(name: string) {
