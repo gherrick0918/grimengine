@@ -1,0 +1,127 @@
+PS C:\dev\grimengine> pnpm test;`
+>> pnpm run seed:characters; `
+>> pnpm dev -- encounter start; `
+>> pnpm dev -- character load-name "Bruni"; `
+>> pnpm dev -- encounter add pc "Bruni"; `
+>> pnpm dev -- character load-name "Kara"; `
+>> pnpm dev -- encounter add pc "Kara"; `
+>> pnpm dev -- encounter add monster "Goblin"; `
+>> pnpm dev -- encounter bless "Bruni" "Bruni,Kara"; `
+>> pnpm dev -- encounter mark "Kara" "Goblin #1"; `
+>> pnpm dev -- attack "Kara" "Goblin #1"; `
+>> pnpm dev -- encounter end; `
+>> pnpm dev -- character unload;
+
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/core, @grimengine/dnd5e-api, @grimengine/rules-srd
+• Running test in 3 packages
+• Remote caching disabled
+@grimengine/core:test: cache hit, replaying logs e6b288fec7902e5f
+@grimengine/core:test: 
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest --config vitest.config.ts
+@grimengine/core:test: 
+@grimengine/core:test:
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test:
+@grimengine/core:test:  ✓ tests/weapons.test.ts (6 tests) 11ms
+@grimengine/core:test:  ✓ tests/combat.test.ts (8 tests) 13ms
+@grimengine/core:test:  ✓ tests/conditions.test.ts (11 tests) 13ms
+@grimengine/core:test:  ✓ tests/tags.test.ts (3 tests) 12ms
+@grimengine/core:test:  ✓ tests/bless.test.ts (3 tests) 15ms
+@grimengine/core:test:  ✓ tests/spells.test.ts (9 tests) 18ms
+@grimengine/core:test:  ✓ tests/slots.test.ts (5 tests) 9ms
+@grimengine/core:test:  ✓ tests/encounter.test.ts (3 tests) 14ms
+@grimengine/core:test:  ✓ tests/checks.test.ts (5 tests) 10ms
+@grimengine/core:test:  ✓ tests/character.test.ts (6 tests) 11ms
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 15ms
+@grimengine/core:test:  ✓ tests/encounter-checks.test.ts (4 tests) 18ms
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 9ms
+@grimengine/core:test:  ✓ tests/huntersMark.test.ts (4 tests) 11ms
+@grimengine/core:test:  ✓ tests/loot.test.ts (5 tests) 18ms
+@grimengine/core:test:  ✓ tests/skills.test.ts (4 tests) 12ms
+@grimengine/core:test:  ✓ tests/derived.test.ts (7 tests) 9ms
+@grimengine/core:test:  ✓ tests/reminders.test.ts (4 tests) 9ms
+@grimengine/core:test:  ✓ tests/concentration.test.ts (3 tests) 8ms
+@grimengine/core:test:  ✓ tests/monster-normalize.test.ts (1 test) 7ms
+@grimengine/core:test:
+@grimengine/core:test:  Test Files  20 passed (20)
+@grimengine/core:test:       Tests  104 passed (104)
+@grimengine/core:test:    Start at  09:23:19
+@grimengine/core:test:    Duration  2.68s (transform 1.31s, setup 0ms, collect 2.75s, tests 239ms, environment 6ms, prepare 5.84s)
+@grimengine/core:test:
+
+ Tasks:    1 successful, 1 total
+Cached:    1 cached, 1 total
+  Time:    324ms >>> FULL TURBO
+
+                                                                                                                                                     
+> grimengine@1.0.0 seed:characters C:\dev\grimengine
+> tsx tools/seed-characters.ts
+
+Seeded Bruni -> .data\characters\Bruni.json
+Seeded Kara -> .data\characters\Kara.json
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "start"
+
+Encounter started.
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "load-name" "Bruni"
+
+Loaded character Bruni (lvl 3). PB +2
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "pc" "Bruni"
+
+Added PC Bruni (id=bruni).
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "load-name" "Kara"
+
+Loaded character Kara (lvl 3). PB +2
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "pc" "Kara"
+
+Added PC Kara (id=kara).
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "monster" "Goblin"
+
+Added 1 Goblin: Goblin #1 (id=goblin-1)
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "bless" "Bruni" "Bruni,Kara"
+
+Bless applied: Bruni → Bruni, Kara (concentration started)
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "mark" "Kara" "Goblin #1"
+
+Started concentration: Hunter's Mark (Kara) → target Goblin #1
+Added tag to Goblin #1: "Hunter's Mark" [conc:kara:Hunter's Mark]
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "attack" "Kara" "Goblin #1"
+
+Ignoring unknown argument: Kara
+Ignoring unknown argument: Goblin #1
+Attack: 1d20
+Rolls: [13] → natural 13 → total 13
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "end"
+
+Encounter ended.
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "unload"
+
+Character session cleared.
+PS C:\dev\grimengine> 
