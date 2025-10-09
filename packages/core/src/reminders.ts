@@ -1,9 +1,13 @@
 import type { ActorTag, EncounterState } from './encounter.js';
+import { bardicInspirationDieFromTag } from './features/bardicInspiration.js';
 
 export type ReminderEvent = 'attack' | 'save' | 'check';
 
 const BLESS_KEY = 'spell:bless';
 const HUNTERS_MARK_KEY = "spell:hunters-mark";
+const GUIDANCE_KEY = 'spell:guidance';
+const GUIDANCE_NAME = 'Guidance';
+const BARDIC_INSPIRATION_KEY = 'bardic-inspiration';
 
 function normalizeText(text: string | undefined): string | undefined {
   return text ? text.toLowerCase().replace(/[^a-z0-9]+/g, '-') : undefined;
@@ -83,6 +87,53 @@ function hasHuntersMarkFromConcentration(state: EncounterState, casterId: string
   return false;
 }
 
+function isGuidanceTag(tag: ActorTag): boolean {
+  const key = tag.key?.toLowerCase();
+  if (key === GUIDANCE_KEY) {
+    return true;
+  }
+  const normalizedText = normalizeText(tag.text);
+  return normalizedText === GUIDANCE_KEY || normalizedText === GUIDANCE_NAME.toLowerCase();
+}
+
+function hasGuidanceFromTags(tags: ActorTag[] | undefined): boolean {
+  if (!tags || tags.length === 0) {
+    return false;
+  }
+  return tags.some((tag) => isGuidanceTag(tag));
+}
+
+function hasGuidanceFromConcentration(state: EncounterState, actorId: string): boolean {
+  const entries = state.concentration ? Object.values(state.concentration) : [];
+  for (const entry of entries) {
+    if (entry.spellName.toLowerCase() !== GUIDANCE_NAME.toLowerCase()) {
+      continue;
+    }
+    if (entry.targetId && entry.targetId === actorId) {
+      return true;
+    }
+    if (entry.targetIds && entry.targetIds.includes(actorId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function findBardicInspirationTag(tags: ActorTag[] | undefined): ActorTag | undefined {
+  if (!tags || tags.length === 0) {
+    return undefined;
+  }
+
+  return tags.find((tag) => {
+    const key = tag.key?.toLowerCase();
+    if (key === BARDIC_INSPIRATION_KEY) {
+      return true;
+    }
+    const normalized = normalizeText(tag.text);
+    return normalized === BARDIC_INSPIRATION_KEY;
+  });
+}
+
 export function remindersFor(
   encounter: EncounterState,
   attackerId: string,
@@ -118,6 +169,26 @@ export function remindersFor(
     if (hasHuntersMark && event === 'attack') {
       const targetName = target?.name ?? 'target';
       reminders.push(`Reminder: Hunter's Mark (+1d6 on hit vs ${targetName})`);
+    }
+  }
+
+  const guidanceActive =
+    event === 'check' &&
+    (hasGuidanceFromTags(attacker.tags) || hasGuidanceFromConcentration(encounter, attackerId));
+
+  if (guidanceActive) {
+    reminders.push('Reminder: Guidance (+1d4 to this ability check; concentration)');
+  }
+
+  const bardicTag = findBardicInspirationTag(attacker.tags);
+  if (bardicTag) {
+    const die = bardicInspirationDieFromTag(bardicTag);
+    if (event === 'attack') {
+      reminders.push(`Reminder: Bardic Inspiration (+${die} to attack; after seeing roll)`);
+    } else if (event === 'save') {
+      reminders.push(`Reminder: Bardic Inspiration (+${die} to save; after seeing roll)`);
+    } else if (event === 'check') {
+      reminders.push(`Reminder: Bardic Inspiration (+${die} to ability check; after seeing roll)`);
     }
   }
 

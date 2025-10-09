@@ -124,5 +124,12 @@ export { castSpell, chooseCastingAbility, spellSaveDC, diceForCharacterLevel, di
 export type { CastOptions, CastResult, NormalizedSpell } from './spells.js';
 export { startHuntersMark, endHuntersMark } from './spells/huntersMark.js';
 export { startBless, endBless } from './spells/bless.js';
+export { startGuidance, endGuidance } from './spells/guidance.js';
+export {
+  applyBardicInspiration,
+  clearBardicInspiration,
+  hasBardicInspiration,
+  bardicInspirationDieFromTag,
+} from './features/bardicInspiration.js';
 export { remindersFor } from './reminders.js';
 export type { ReminderEvent } from './reminders.js';
