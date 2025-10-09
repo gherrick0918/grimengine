@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { relative } from 'node:path';
 
 import {
   abilityCheck,
@@ -166,7 +167,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter add <goblin|bandit|skeleton> [--n <count>] [--name <BaseName>]');
   console.log('  pnpm dev -- encounter list');
   console.log('  pnpm dev -- encounter save "<name>"');
-  console.log('  pnpm dev -- encounter list-saves');
+  console.log('  pnpm dev -- encounter ls');
   console.log('  pnpm dev -- encounter load "<name>"');
   console.log('  pnpm dev -- encounter delete "<name>"');
   console.log('  pnpm dev -- encounter roll-init');
@@ -3698,27 +3699,37 @@ function handleEncounterSaveCommand(rawArgs: string[]): void {
     process.exit(1);
   }
 
+  if (name.toLowerCase() === 'current') {
+    console.error('Encounter save name "current" is reserved.');
+    process.exit(1);
+  }
+
+  if (/[\\/]/.test(name)) {
+    console.error('Encounter save name cannot contain path separators.');
+    process.exit(1);
+  }
+
   const encounter = loadEncounter();
   if (!encounter) {
     console.error('No encounter in progress. Use `pnpm dev -- encounter start` first.');
     process.exit(1);
   }
 
-  saveEncounterAs(name, encounter);
-  console.log(`Saved encounter as "${name}".`);
+  const filePath = saveEncounterAs(name, encounter);
+  const relativePath = relative(process.cwd(), filePath);
+  console.log(`Saved encounter → ${relativePath}`);
   process.exit(0);
 }
 
-function handleEncounterListSavesCommand(): void {
+function handleEncounterListSnapshotsCommand(): void {
   const saves = listEncounterSaves();
   if (saves.length === 0) {
-    console.log('No saved encounters.');
+    console.log('(no snapshots)');
     process.exit(0);
   }
 
-  console.log('Saved encounters:');
   saves.forEach((save) => {
-    console.log(`- ${save}`);
+    console.log(save);
   });
   process.exit(0);
 }
@@ -3742,7 +3753,8 @@ function handleEncounterLoadCommand(rawArgs: string[]): void {
   }
 
   saveEncounter(encounter);
-  console.log(`Loaded encounter "${name}" into session.`);
+  const actorCount = Object.keys(encounter.actors ?? {}).length;
+  console.log(`Loaded encounter '${name}' with ${actorCount} actors.`);
   process.exit(0);
 }
 
@@ -4265,8 +4277,13 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
     return;
   }
 
+  if (subcommand === 'ls') {
+    handleEncounterListSnapshotsCommand();
+    return;
+  }
+
   if (subcommand === 'list-saves') {
-    handleEncounterListSavesCommand();
+    handleEncounterListSnapshotsCommand();
     return;
   }
 
