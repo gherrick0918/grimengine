@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Character } from '@grimengine/core';
+import { normalizeCharacter, type Character } from '@grimengine/core';
 
 const ROOT = join(process.cwd(), '.data', 'characters');
 
@@ -14,7 +14,8 @@ export function characterPath(name: string): string {
 
 export function saveToVault(name: string, character: Character): void {
   ensureVault();
-  writeFileSync(characterPath(name), JSON.stringify(character, null, 2), 'utf-8');
+  const normalized = normalizeCharacter(character);
+  writeFileSync(characterPath(name), JSON.stringify(normalized, null, 2), 'utf-8');
 }
 
 export function loadFromVault(name: string): Character | null {
@@ -24,7 +25,8 @@ export function loadFromVault(name: string): Character | null {
       return null;
     }
     const raw = readFileSync(path, 'utf-8');
-    return JSON.parse(raw) as Character;
+    const parsed = JSON.parse(raw) as Character;
+    return normalizeCharacter(parsed);
   } catch {
     return null;
   }
