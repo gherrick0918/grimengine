@@ -106,6 +106,12 @@ import { clearCharacter, loadCharacter, saveCharacter } from './session';
 import { listVaultNames, loadFromVault, saveToVault } from './char-vault';
 import { getActorIdByName } from './lib/resolve';
 
+const SAMPLE_MONSTER_TYPES = {
+  goblin: 'Goblin',
+  bandit: 'Bandit',
+  skeleton: 'Skeleton',
+} as const;
+
 function showUsage(): void {
   console.log('Usage:');
   console.log('  pnpm dev -- roll "<expression>" [adv|dis] [--seed <value>]');
@@ -156,6 +162,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter start [--seed <value>]');
   console.log('  pnpm dev -- encounter add pc "<name>"');
   console.log('  pnpm dev -- encounter add monster "<name>" [--count <n>]');
+  console.log('  pnpm dev -- encounter add <goblin|bandit|skeleton> [--n <count>] [--name <BaseName>]');
   console.log('  pnpm dev -- encounter list');
   console.log('  pnpm dev -- encounter save "<name>"');
   console.log('  pnpm dev -- encounter list-saves');
@@ -2578,9 +2585,80 @@ async function handleEncounterAddMonsterCommand(rawArgs: string[]): Promise<void
   process.exit(0);
 }
 
+function handleEncounterAddSampleMonsterCommand(type: string, rawArgs: string[]): void {
+  const key = type.toLowerCase() as keyof typeof SAMPLE_MONSTER_TYPES;
+  const templateName = SAMPLE_MONSTER_TYPES[key];
+  if (!templateName) {
+    console.error(`Unknown encounter add type: ${type}`);
+    process.exit(1);
+  }
+
+  let count = 1;
+  let baseNameOverride: string | undefined;
+
+  try {
+    for (let i = 0; i < rawArgs.length; i += 1) {
+      const arg = rawArgs[i];
+      if (!arg) {
+        continue;
+      }
+
+      if (arg.startsWith('--n=')) {
+        count = parsePositiveInteger(arg.slice('--n='.length), '--n');
+        continue;
+      }
+
+      const lower = arg.toLowerCase();
+
+      if (lower === '--n') {
+        count = parsePositiveInteger(rawArgs[i + 1], '--n');
+        i += 1;
+        continue;
+      }
+
+      if (lower.startsWith('--name=')) {
+        baseNameOverride = arg.slice('--name='.length);
+        continue;
+      }
+
+      if (lower === '--name') {
+        baseNameOverride = rawArgs[i + 1];
+        if (baseNameOverride === undefined) {
+          throw new Error('Expected value after --name.');
+        }
+        i += 1;
+        continue;
+      }
+
+      console.warn(`Ignoring unknown argument: ${arg}`);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+  }
+
+  const template = getMonsterByName(templateName);
+  if (!template) {
+    console.error(`Monster template not found: ${templateName}`);
+    process.exit(1);
+  }
+
+  const encounter = requireEncounterState();
+  const baseName = baseNameOverride?.trim() ? baseNameOverride.trim() : template.name;
+  const { state, added } = addMonsters(encounter, template, baseName, count);
+  saveEncounter(state);
+
+  const summaryName = added.length === 1 ? baseName : `${baseName}s`;
+  const names = added.map((actor) => `${actor.name} (id=${actor.id})`).join(', ');
+  console.log(`Added ${added.length} ${summaryName}: ${names}`);
+  process.exit(0);
+}
+
 async function handleEncounterAddCommand(rawArgs: string[]): Promise<void> {
-  if (rawArgs.length < 2) {
-    console.error('Usage: pnpm dev -- encounter add <pc|monster> "<name>" [...]');
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- encounter add <pc|monster|goblin|bandit|skeleton> [...]');
     process.exit(1);
   }
 
@@ -2596,7 +2674,17 @@ async function handleEncounterAddCommand(rawArgs: string[]): Promise<void> {
   }
 
   if (type === 'monster') {
+    if (rest.length === 0) {
+      console.error('Missing monster name.');
+      process.exit(1);
+    }
     await handleEncounterAddMonsterCommand(rest);
+    return;
+  }
+
+  const sampleKey = type.toLowerCase();
+  if (sampleKey in SAMPLE_MONSTER_TYPES) {
+    handleEncounterAddSampleMonsterCommand(sampleKey, rest);
     return;
   }
 
