@@ -1,0 +1,93 @@
+{
+  "id": "encounter-seed-123",
+  "seed": "seed-123",
+  "round": 5,
+  "turnIndex": 2,
+  "order": [
+    {
+      "actorId": "bruni",
+      "rolled": 15,
+      "total": 18
+    },
+    {
+      "actorId": "goblin-1",
+      "rolled": 12,
+      "total": 14
+    }
+  ],
+  "actors": {
+    "bruni": {
+      "id": "bruni",
+      "name": "Bruni",
+      "side": "party",
+      "ac": 17,
+      "hp": 27,
+      "maxHp": 27,
+      "abilityMods": {
+        "WIS": 3
+      },
+      "proficiencyBonus": 3,
+      "type": "pc",
+      "defaultWeapon": {
+        "name": "Warhammer",
+        "attackMod": 6,
+        "damageExpr": "1d8+4"
+      },
+      "tags": [
+        {
+          "id": "t1",
+          "text": "Bless (+d4 to attacks and saves)",
+          "source": "Bruni",
+          "key": "spell",
+          "value": "bless",
+          "addedAtRound": 1
+        }
+      ]
+    },
+    "goblin-1": {
+      "id": "goblin-1",
+      "name": "Goblin #1",
+      "side": "foe",
+      "ac": 15,
+      "hp": 7,
+      "maxHp": 7,
+      "abilityMods": {
+        "DEX": 2
+      },
+      "type": "monster",
+      "attacks": [
+        {
+          "name": "Scimitar",
+          "attackMod": 4,
+          "damageExpr": "1d6+2"
+        }
+      ],
+      "tags": [
+        {
+          "id": "t2",
+          "text": "Hunter's Mark",
+          "source": "Kara",
+          "key": "spell",
+          "value": "hunters-mark",
+          "addedAtRound": 1
+        }
+      ]
+    }
+  },
+  "defeated": [
+    "goblin-2",
+    "goblin-3"
+  ],
+  "lootLog": [],
+  "xpLog": [],
+  "concentration": {
+    "bruni": {
+      "casterId": "bruni",
+      "spellName": "Bless",
+      "targetIds": [
+        "bruni",
+        "kara"
+      ]
+    }
+  }
+}
