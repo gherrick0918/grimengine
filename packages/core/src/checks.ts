@@ -1,4 +1,4 @@
-import { AbilityName } from './abilityScores.js';
+import type { AbilityName } from './abilityScores';
 import { roll } from './dice.js';
 
 export interface CheckOptions {
