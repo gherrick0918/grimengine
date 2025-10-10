@@ -1,5 +1,9 @@
 import type { ActorTag, EncounterState } from './encounter.js';
-import { bardicInspirationDieFromTag } from './features/bardicInspiration.js';
+import {
+  bardicInspirationAutoClears,
+  bardicInspirationDieFromTag,
+  getBardicInspirationTag,
+} from './features/bardicInspiration.js';
 
 export type ReminderEvent = 'attack' | 'save' | 'check';
 
@@ -7,7 +11,6 @@ const BLESS_KEY = 'spell:bless';
 const HUNTERS_MARK_KEY = "spell:hunters-mark";
 const GUIDANCE_KEY = 'spell:guidance';
 const GUIDANCE_NAME = 'Guidance';
-const BARDIC_INSPIRATION_KEY = 'bardic-inspiration';
 
 function normalizeText(text: string | undefined): string | undefined {
   return text ? text.toLowerCase().replace(/[^a-z0-9]+/g, '-') : undefined;
@@ -119,21 +122,6 @@ function hasGuidanceFromConcentration(state: EncounterState, actorId: string): b
   return false;
 }
 
-function findBardicInspirationTag(tags: ActorTag[] | undefined): ActorTag | undefined {
-  if (!tags || tags.length === 0) {
-    return undefined;
-  }
-
-  return tags.find((tag) => {
-    const key = tag.key?.toLowerCase();
-    if (key === BARDIC_INSPIRATION_KEY) {
-      return true;
-    }
-    const normalized = normalizeText(tag.text);
-    return normalized === BARDIC_INSPIRATION_KEY;
-  });
-}
-
 export function remindersFor(
   encounter: EncounterState,
   attackerId: string,
@@ -180,15 +168,16 @@ export function remindersFor(
     reminders.push('Reminder: Guidance (+1d4 to this ability check; concentration)');
   }
 
-  const bardicTag = findBardicInspirationTag(attacker.tags);
+  const bardicTag = getBardicInspirationTag(attacker.tags);
   if (bardicTag) {
     const die = bardicInspirationDieFromTag(bardicTag);
+    const autoSuffix = bardicInspirationAutoClears(bardicTag) ? '; auto-clear' : '';
     if (event === 'attack') {
-      reminders.push(`Reminder: Bardic Inspiration (+${die} to attack; after seeing roll)`);
+      reminders.push(`Reminder: Bardic Inspiration (+${die} to attack; after seeing roll${autoSuffix})`);
     } else if (event === 'save') {
-      reminders.push(`Reminder: Bardic Inspiration (+${die} to save; after seeing roll)`);
+      reminders.push(`Reminder: Bardic Inspiration (+${die} to save; after seeing roll${autoSuffix})`);
     } else if (event === 'check') {
-      reminders.push(`Reminder: Bardic Inspiration (+${die} to ability check; after seeing roll)`);
+      reminders.push(`Reminder: Bardic Inspiration (+${die} to ability check; after seeing roll${autoSuffix})`);
     }
   }
 

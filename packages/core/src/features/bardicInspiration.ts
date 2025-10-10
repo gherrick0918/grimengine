@@ -5,6 +5,11 @@ const TAG_KEY = 'bardic-inspiration';
 const DEFAULT_DIE = 'd6';
 const VALID_DICE = new Set(['d6', 'd8', 'd10', 'd12']);
 
+interface BardicInspirationPayload {
+  autoClear?: boolean;
+  die?: string;
+}
+
 export type BardicInspirationDie = 'd6' | 'd8' | 'd10' | 'd12';
 
 type Role = 'bard' | 'target';
@@ -78,6 +83,24 @@ function extractDieFromValue(value: BardicInspirationValue | undefined): string 
   return undefined;
 }
 
+function extractDieFromPayload(payload: BardicInspirationPayload | undefined): string | undefined {
+  if (payload && typeof payload.die === 'string') {
+    return payload.die;
+  }
+  return undefined;
+}
+
+function normalizePayload(
+  die: BardicInspirationDie,
+  options?: { autoClear?: boolean },
+): BardicInspirationPayload | undefined {
+  if (!options?.autoClear) {
+    return undefined;
+  }
+
+  return { autoClear: true, die };
+}
+
 export function hasBardicInspiration(tags: ActorTag[] | undefined): boolean {
   if (!tags || tags.length === 0) {
     return false;
@@ -89,12 +112,13 @@ export function applyBardicInspiration(
   state: EncounterState,
   bardId: string,
   targetId: string,
-  options?: { die?: BardicInspirationDie | string },
+  options?: { die?: BardicInspirationDie | string; autoClear?: boolean },
 ): EncounterState {
   ensureActor(state, bardId, 'bard');
   ensureActor(state, targetId, 'target');
 
   const die = normalizeDie(options?.die);
+  const payload = normalizePayload(die, options);
 
   let nextState = removeBardicInspirationTags(state, targetId);
 
@@ -105,6 +129,7 @@ export function applyBardicInspiration(
     value: die,
     note: `Add ${die} to one ability check, attack roll, or saving throw`,
     source,
+    payload,
   });
 
   return nextState;
@@ -118,6 +143,59 @@ export function bardicInspirationDieFromTag(tag: ActorTag | undefined): string {
   if (!tag) {
     return DEFAULT_DIE;
   }
-  const die = normalizeDie(extractDieFromValue(tag.value));
-  return die;
+  const fromValue = extractDieFromValue(tag.value);
+  if (fromValue) {
+    return normalizeDie(fromValue);
+  }
+  const fromPayload = extractDieFromPayload(tag.payload as BardicInspirationPayload | undefined);
+  if (fromPayload) {
+    return normalizeDie(fromPayload);
+  }
+  return DEFAULT_DIE;
+}
+
+export function getBardicInspirationTag(tags: ActorTag[] | undefined): ActorTag | undefined {
+  if (!tags || tags.length === 0) {
+    return undefined;
+  }
+
+  return tags.find((tag) => isBardicInspirationTag(tag));
+}
+
+export function bardicInspirationAutoClears(tag: ActorTag | undefined): boolean {
+  if (!tag) {
+    return false;
+  }
+  const payload = tag.payload as BardicInspirationPayload | undefined;
+  return Boolean(payload?.autoClear);
+}
+
+export function consumeBardicInspiration(
+  state: EncounterState,
+  targetId: string,
+  options?: { autoOnly?: boolean },
+): { state: EncounterState; consumed: boolean; removedTag?: ActorTag } {
+  const actor = state.actors[targetId];
+  if (!actor) {
+    return { state, consumed: false };
+  }
+
+  const tag = getBardicInspirationTag(actor.tags);
+  if (!tag) {
+    return { state, consumed: false };
+  }
+
+  if (options?.autoOnly && !bardicInspirationAutoClears(tag)) {
+    return { state, consumed: false };
+  }
+
+  const nextState = clearBardicInspiration(state, targetId);
+  const updatedActor = nextState.actors[targetId];
+  const consumed = !hasBardicInspiration(updatedActor?.tags);
+
+  if (!consumed) {
+    return { state, consumed: false };
+  }
+
+  return { state: nextState, consumed: true, removedTag: tag };
 }

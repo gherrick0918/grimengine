@@ -46,6 +46,12 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.6.1)(tsx@4.20.6)
 
+  apps/cli:
+    dependencies:
+      '@grimengine/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+
   packages/adapters/dnd5e-api:
     dependencies:
       '@grimengine/core':
