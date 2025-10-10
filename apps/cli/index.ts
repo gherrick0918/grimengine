@@ -3229,6 +3229,7 @@ function handleEncounterAdvantageToggleCommand(
     if (matching.length === 0) {
       updatedEncounter = encounterAddActorTag(updatedEncounter, actor.id, {
         key: tagKey,
+        text: label,
         value: true,
       });
     }
