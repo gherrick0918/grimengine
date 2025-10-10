@@ -122,6 +122,18 @@ function hasGuidanceFromConcentration(state: EncounterState, actorId: string): b
   return false;
 }
 
+function normalizedTagIdentifier(tag: ActorTag): string | undefined {
+  return normalizeText(tag.key ?? tag.text);
+}
+
+function hasConditionTag(tags: ActorTag[] | undefined, condition: string): boolean {
+  if (!tags || tags.length === 0) {
+    return false;
+  }
+  const expected = `condition-${condition}`;
+  return tags.some((tag) => normalizedTagIdentifier(tag) === expected);
+}
+
 export function remindersFor(
   encounter: EncounterState,
   attackerId: string,
@@ -179,6 +191,38 @@ export function remindersFor(
     } else if (event === 'check') {
       reminders.push(`Reminder: Bardic Inspiration (+${die} to ability check; after seeing roll${autoSuffix})`);
     }
+  }
+
+  const attackerConditions = attacker.tags ?? [];
+  const targetConditions = targetId ? encounter.actors[targetId]?.tags ?? [] : [];
+
+  if (event === 'attack') {
+    if (hasConditionTag(targetConditions, 'prone')) {
+      reminders.push(
+        'Reminder: Target is Prone (melee attacks: advantage; ranged attacks: disadvantage)',
+      );
+    }
+    if (hasConditionTag(attackerConditions, 'prone')) {
+      reminders.push('Reminder: Attacker is Prone (attacks: disadvantage)');
+    }
+
+    if (hasConditionTag(targetConditions, 'restrained')) {
+      reminders.push('Reminder: Target is Restrained (attacks against it: advantage)');
+    }
+    if (hasConditionTag(attackerConditions, 'restrained')) {
+      reminders.push('Reminder: Attacker is Restrained (attacks: disadvantage)');
+    }
+
+    if (hasConditionTag(targetConditions, 'invisible')) {
+      reminders.push('Reminder: Target is Invisible (attacks against it: disadvantage)');
+    }
+    if (hasConditionTag(attackerConditions, 'invisible')) {
+      reminders.push('Reminder: Attacker is Invisible (attacks: advantage)');
+    }
+  }
+
+  if (event === 'save' && hasConditionTag(attackerConditions, 'restrained')) {
+    reminders.push('Reminder: Restrained (DEX saves: disadvantage)');
   }
 
   return reminders;
