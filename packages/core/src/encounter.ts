@@ -24,6 +24,7 @@ export interface ActorTag {
   source?: string;
   key?: string;
   value?: unknown;
+  payload?: Record<string, unknown>;
 }
 
 export interface ActorBase {

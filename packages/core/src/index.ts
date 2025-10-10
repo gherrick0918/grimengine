@@ -130,6 +130,9 @@ export {
   clearBardicInspiration,
   hasBardicInspiration,
   bardicInspirationDieFromTag,
+  getBardicInspirationTag,
+  bardicInspirationAutoClears,
+  consumeBardicInspiration,
 } from './features/bardicInspiration.js';
 export { remindersFor } from './reminders.js';
 export type { ReminderEvent } from './reminders.js';

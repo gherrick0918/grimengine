@@ -66,6 +66,7 @@ import {
   clearBardicInspiration,
   hasBardicInspiration,
   bardicInspirationDieFromTag,
+  consumeBardicInspiration,
   remindersFor,
   concentrationDCFromDamage,
   concentrationReminderLinesForDamage,
@@ -191,7 +192,10 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter mark "<rangerIdOrName>" "<targetIdOrName>" [--note "<detail>"]');
   console.log('  pnpm dev -- encounter bless "<casterIdOrName>" "A,B,C"');
   console.log('  pnpm dev -- encounter guidance "<casterIdOrName>" "<targetIdOrName>"');
-  console.log('  pnpm dev -- encounter inspire "<bardIdOrName>" "<targetIdOrName>" [--die d6|d8|d10|d12]');
+  console.log(
+    '  pnpm dev -- encounter inspire "<bardIdOrName>" "<targetIdOrName>" [--die d6|d8|d10|d12] [--auto-clear]'
+  );
+  console.log('  pnpm dev -- encounter inspire use "<targetIdOrName>"');
   console.log('  pnpm dev -- encounter inspire-clear "<targetIdOrName>"');
   console.log('  pnpm dev -- encounter remind "<Attacker>" ["<Target>"] [--event attack|save|check]');
   console.log('  pnpm dev -- encounter condition add "<actorIdOrName>" <condition>');
@@ -3284,7 +3288,7 @@ function handleEncounterGuidanceCommand(rawArgs: string[]): void {
 function handleEncounterInspireCommand(rawArgs: string[]): void {
   if (rawArgs.length < 2) {
     console.error(
-      'Usage: pnpm dev -- encounter inspire "<bardIdOrName>" "<targetIdOrName>" [--die d6|d8|d10|d12]',
+      'Usage: pnpm dev -- encounter inspire "<bardIdOrName>" "<targetIdOrName>" [--die d6|d8|d10|d12] [--auto-clear]',
     );
     process.exit(1);
   }
@@ -3292,6 +3296,7 @@ function handleEncounterInspireCommand(rawArgs: string[]): void {
   const [bardIdentifierRaw, targetIdentifierRaw, ...optionArgs] = rawArgs;
 
   let requestedDie: string | undefined;
+  let autoClear = false;
   for (let i = 0; i < optionArgs.length; i += 1) {
     const arg = optionArgs[i];
     if (!arg) {
@@ -3314,6 +3319,17 @@ function handleEncounterInspireCommand(rawArgs: string[]): void {
       continue;
     }
 
+    if (lower === '--auto-clear') {
+      autoClear = true;
+      continue;
+    }
+
+    if (lower.startsWith('--auto-clear=')) {
+      const value = arg.slice('--auto-clear='.length).toLowerCase();
+      autoClear = value === 'true' || value === '1' || value === 'yes' || value === 'on';
+      continue;
+    }
+
     console.warn(`Ignoring unknown argument: ${arg}`);
   }
 
@@ -3333,7 +3349,10 @@ function handleEncounterInspireCommand(rawArgs: string[]): void {
   }
 
   try {
-    encounter = applyBardicInspiration(encounter, bard.id, target.id, { die: requestedDie });
+    encounter = applyBardicInspiration(encounter, bard.id, target.id, {
+      die: requestedDie,
+      autoClear,
+    });
   } catch (error) {
     if (error instanceof Error) {
       console.error(error.message);
@@ -3354,7 +3373,48 @@ function handleEncounterInspireCommand(rawArgs: string[]): void {
   const die = bardicInspirationDieFromTag(inspirationTag);
 
   saveEncounter(encounter);
-  console.log(`Bardic Inspiration applied: ${bard.name} → ${target.name} (+${die})`);
+  const suffix = autoClear ? ', auto-clear' : '';
+  console.log(`Bardic Inspiration applied: ${bard.name} → ${target.name} (+${die}${suffix})`);
+  process.exit(0);
+}
+
+function handleEncounterInspireUseCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 1) {
+    console.error('Usage: pnpm dev -- encounter inspire use "<targetIdOrName>"');
+    process.exit(1);
+  }
+
+  const [targetIdentifierRaw, ...rest] = rawArgs;
+
+  if (rest.length > 0) {
+    console.warn(`Ignoring extra argument(s): ${rest.join(', ')}`);
+  }
+
+  let encounter = requireEncounterState();
+
+  let target: EncounterActor;
+  try {
+    target = findActorByIdentifier(encounter, targetIdentifierRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const consumption = consumeBardicInspiration(encounter, target.id);
+  if (!consumption.consumed || !consumption.removedTag) {
+    console.log(`${target.name} has no Bardic Inspiration.`);
+    process.exit(0);
+    return;
+  }
+
+  encounter = consumption.state;
+  saveEncounter(encounter);
+
+  const die = bardicInspirationDieFromTag(consumption.removedTag);
+  console.log(`Using Bardic Inspiration on ${target.name}: add +${die} (after seeing the roll).`);
   process.exit(0);
 }
 
@@ -4163,6 +4223,13 @@ function handleEncounterCheckCommand(rawArgs: string[]): void {
     console.log(`(conditions: ${conditionNotes.join(', ')})`);
   }
 
+  const consumption = consumeBardicInspiration(encounter, actor.id, { autoOnly: true });
+  if (consumption.consumed) {
+    encounter = consumption.state;
+    saveEncounter(encounter);
+    console.log('(Bardic Inspiration consumed.)');
+  }
+
   process.exit(0);
 }
 
@@ -4287,6 +4354,8 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
   });
 
   encounter = result.state;
+  const autoConsumption = consumeBardicInspiration(encounter, attacker.id, { autoOnly: true });
+  encounter = autoConsumption.state;
   saveEncounter(encounter);
 
   console.log(`Mode: ${effectiveMode} (conditions: ${conditionSummary})`);
@@ -4327,6 +4396,10 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
     console.log(
       `Defender ${updatedDefender.name} (id=${updatedDefender.id}) now has ${formatHitPoints(updatedDefender)} HP (${status}).`,
     );
+  }
+
+  if (autoConsumption.consumed) {
+    console.log('(Bardic Inspiration consumed.)');
   }
 
   process.exit(0);
@@ -4558,7 +4631,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   }
 
   if (subcommand === 'inspire') {
-    handleEncounterInspireCommand(rest);
+    if (rest[0] && rest[0].toLowerCase() === 'use') {
+      handleEncounterInspireUseCommand(rest.slice(1));
+    } else {
+      handleEncounterInspireCommand(rest);
+    }
     return;
   }
 
