@@ -1,4 +1,5 @@
 import type { ActorTag, EncounterState } from './encounter.js';
+import { hasCondition } from './conditions.js';
 import {
   bardicInspirationAutoClears,
   bardicInspirationDieFromTag,
@@ -224,35 +225,40 @@ export function remindersFor(
     }
   }
 
-  const attackerConditions = attacker.tags ?? [];
-  const targetConditions = targetId ? encounter.actors[targetId]?.tags ?? [] : [];
+  const target = targetId ? encounter.actors[targetId] : undefined;
 
   if (event === 'attack') {
-    if (hasConditionTag(targetConditions, 'prone')) {
+    if (hasCondition(target?.conditions, 'prone') || hasConditionTag(target?.tags, 'prone')) {
       reminders.push(
         'Reminder: Target is Prone (melee attacks: advantage; ranged attacks: disadvantage)',
       );
     }
-    if (hasConditionTag(attackerConditions, 'prone')) {
+    if (hasCondition(attacker.conditions, 'prone') || hasConditionTag(attacker.tags, 'prone')) {
       reminders.push('Reminder: Attacker is Prone (attacks: disadvantage)');
     }
 
-    if (hasConditionTag(targetConditions, 'restrained')) {
+    if (hasCondition(target?.conditions, 'restrained') || hasConditionTag(target?.tags, 'restrained')) {
       reminders.push('Reminder: Target is Restrained (attacks against it: advantage)');
     }
-    if (hasConditionTag(attackerConditions, 'restrained')) {
+    if (
+      hasCondition(attacker.conditions, 'restrained') ||
+      hasConditionTag(attacker.tags, 'restrained')
+    ) {
       reminders.push('Reminder: Attacker is Restrained (attacks: disadvantage)');
     }
 
-    if (hasConditionTag(targetConditions, 'invisible')) {
+    if (hasCondition(target?.conditions, 'invisible') || hasConditionTag(target?.tags, 'invisible')) {
       reminders.push('Reminder: Target is Invisible (attacks against it: disadvantage)');
     }
-    if (hasConditionTag(attackerConditions, 'invisible')) {
+    if (hasCondition(attacker.conditions, 'invisible') || hasConditionTag(attacker.tags, 'invisible')) {
       reminders.push('Reminder: Attacker is Invisible (attacks: advantage)');
     }
   }
 
-  if (event === 'save' && hasConditionTag(attackerConditions, 'restrained')) {
+  if (
+    event === 'save' &&
+    (hasCondition(attacker.conditions, 'restrained') || hasConditionTag(attacker.tags, 'restrained'))
+  ) {
     reminders.push('Reminder: Restrained (DEX saves: disadvantage)');
   }
 
