@@ -193,6 +193,37 @@ export function remindersFor(
     }
   }
 
+  const normalizedAttackerTags = (attacker.tags ?? [])
+    .map((tag) => normalizedTagIdentifier(tag))
+    .filter((value): value is string => Boolean(value));
+
+  const hasAdvantage = normalizedAttackerTags.includes('state-advantage');
+  const hasDisadvantage = normalizedAttackerTags.includes('state-disadvantage');
+
+  if (hasAdvantage && hasDisadvantage) {
+    reminders.push('Reminder: Advantage & Disadvantage both present — they cancel out (roll normally)');
+  } else if (hasAdvantage) {
+    if (event === 'attack') {
+      reminders.push('Reminder: Advantage on this attack');
+    }
+    if (event === 'save') {
+      reminders.push('Reminder: Advantage on this save');
+    }
+    if (event === 'check') {
+      reminders.push('Reminder: Advantage on this check');
+    }
+  } else if (hasDisadvantage) {
+    if (event === 'attack') {
+      reminders.push('Reminder: Disadvantage on this attack');
+    }
+    if (event === 'save') {
+      reminders.push('Reminder: Disadvantage on this save');
+    }
+    if (event === 'check') {
+      reminders.push('Reminder: Disadvantage on this check');
+    }
+  }
+
   const attackerConditions = attacker.tags ?? [];
   const targetConditions = targetId ? encounter.actors[targetId]?.tags ?? [] : [];
 
