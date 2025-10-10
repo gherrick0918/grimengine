@@ -198,6 +198,9 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter inspire use "<targetIdOrName>"');
   console.log('  pnpm dev -- encounter inspire-clear "<targetIdOrName>"');
   console.log('  pnpm dev -- encounter remind "<Attacker>" ["<Target>"] [--event attack|save|check]');
+  console.log('  pnpm dev -- encounter prone "<actorIdOrName>" <on|off>');
+  console.log('  pnpm dev -- encounter restrained "<actorIdOrName>" <on|off>');
+  console.log('  pnpm dev -- encounter invisible "<actorIdOrName>" <on|off>');
   console.log('  pnpm dev -- encounter condition add "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition remove "<actorIdOrName>" <condition>');
   console.log('  pnpm dev -- encounter condition list');
@@ -3147,6 +3150,94 @@ function handleEncounterRemindCommand(rawArgs: string[]): void {
   process.exit(0);
 }
 
+type ConditionTagKey = 'prone' | 'restrained' | 'invisible';
+
+const CONDITION_LABELS: Record<ConditionTagKey, string> = {
+  prone: 'Prone',
+  restrained: 'Restrained',
+  invisible: 'Invisible',
+};
+
+function parseToggleValue(raw: string | undefined): boolean {
+  if (!raw) {
+    throw new Error('Expected <on|off> argument.');
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === 'on' || normalized === 'true') {
+    return true;
+  }
+  if (normalized === 'off' || normalized === 'false') {
+    return false;
+  }
+  throw new Error(`Unknown toggle value "${raw}". Expected "on" or "off".`);
+}
+
+function handleEncounterConditionTagCommand(rawArgs: string[], condition: ConditionTagKey): void {
+  if (rawArgs.length < 2) {
+    console.error(`Usage: pnpm dev -- encounter ${condition} "<actorIdOrName>" <on|off>`);
+    process.exit(1);
+  }
+
+  const [identifier, toggle, ...rest] = rawArgs;
+  if (!identifier) {
+    console.error('Actor identifier is required.');
+    process.exit(1);
+  }
+
+  if (rest.length > 0) {
+    console.warn(`Ignoring extra argument(s): ${rest.join(', ')}`);
+  }
+
+  let turnOn: boolean;
+  try {
+    turnOn = parseToggleValue(toggle);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const encounter = requireEncounterState();
+
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, identifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const tagKey = `condition:${condition}`;
+  const label = CONDITION_LABELS[condition];
+  let updatedEncounter: EncounterState = encounter;
+
+  const actorTags = actor.tags ?? [];
+  const matching = actorTags.filter((tag) => tag.key?.toLowerCase() === tagKey);
+
+  if (turnOn) {
+    if (matching.length === 0) {
+      updatedEncounter = encounterAddActorTag(updatedEncounter, actor.id, {
+        key: tagKey,
+        text: label,
+        value: true,
+      });
+    }
+  } else {
+    matching.forEach((tag) => {
+      updatedEncounter = encounterRemoveActorTag(updatedEncounter, actor.id, tag.id);
+    });
+  }
+
+  saveEncounter(updatedEncounter);
+  console.log(`${actor.name}: ${label} ${turnOn ? 'ON' : 'OFF'}`);
+  process.exit(0);
+}
+
 function handleEncounterBlessCommand(rawArgs: string[]): void {
   if (rawArgs.length < 2) {
     console.error('Usage: pnpm dev -- encounter bless "<casterIdOrName>" "A,B,C"');
@@ -4651,6 +4742,21 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'remind') {
     handleEncounterRemindCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'prone') {
+    handleEncounterConditionTagCommand(rest, 'prone');
+    return;
+  }
+
+  if (subcommand === 'restrained') {
+    handleEncounterConditionTagCommand(rest, 'restrained');
+    return;
+  }
+
+  if (subcommand === 'invisible') {
+    handleEncounterConditionTagCommand(rest, 'invisible');
     return;
   }
 
