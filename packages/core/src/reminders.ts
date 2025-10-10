@@ -127,12 +127,30 @@ function normalizedTagIdentifier(tag: ActorTag): string | undefined {
   return normalizeText(tag.key ?? tag.text);
 }
 
-function hasConditionTag(tags: ActorTag[] | undefined, condition: string): boolean {
+function conditionTagIdentifiers(tags: ActorTag[] | undefined): Set<string> | undefined {
   if (!tags || tags.length === 0) {
+    return undefined;
+  }
+
+  const identifiers = new Set<string>();
+  for (const tag of tags) {
+    const normalized = normalizedTagIdentifier(tag);
+    if (normalized?.startsWith('condition-')) {
+      identifiers.add(normalized);
+    }
+  }
+  return identifiers.size > 0 ? identifiers : undefined;
+}
+
+function hasConditionTag(
+  identifiers: Set<string> | undefined,
+  condition: string,
+): boolean {
+  if (!identifiers || identifiers.size === 0) {
     return false;
   }
   const expected = `condition-${condition}`;
-  return tags.some((tag) => normalizedTagIdentifier(tag) === expected);
+  return identifiers.has(expected);
 }
 
 export function remindersFor(
@@ -227,37 +245,49 @@ export function remindersFor(
 
   const target = targetId ? encounter.actors[targetId] : undefined;
 
+  const attackerConditionTags = conditionTagIdentifiers(attacker.tags);
+  const targetConditionTags = conditionTagIdentifiers(target?.tags);
+
   if (event === 'attack') {
-    if (hasCondition(target?.conditions, 'prone') || hasConditionTag(target?.tags, 'prone')) {
+    if (hasCondition(target?.conditions, 'prone') || hasConditionTag(targetConditionTags, 'prone')) {
       reminders.push(
         'Reminder: Target is Prone (melee attacks: advantage; ranged attacks: disadvantage)',
       );
     }
-    if (hasCondition(attacker.conditions, 'prone') || hasConditionTag(attacker.tags, 'prone')) {
+    if (hasCondition(attacker.conditions, 'prone') || hasConditionTag(attackerConditionTags, 'prone')) {
       reminders.push('Reminder: Attacker is Prone (attacks: disadvantage)');
     }
 
-    if (hasCondition(target?.conditions, 'restrained') || hasConditionTag(target?.tags, 'restrained')) {
+    if (
+      hasCondition(target?.conditions, 'restrained') ||
+      hasConditionTag(targetConditionTags, 'restrained')
+    ) {
       reminders.push('Reminder: Target is Restrained (attacks against it: advantage)');
     }
     if (
       hasCondition(attacker.conditions, 'restrained') ||
-      hasConditionTag(attacker.tags, 'restrained')
+      hasConditionTag(attackerConditionTags, 'restrained')
     ) {
       reminders.push('Reminder: Attacker is Restrained (attacks: disadvantage)');
     }
 
-    if (hasCondition(target?.conditions, 'invisible') || hasConditionTag(target?.tags, 'invisible')) {
+    if (
+      hasCondition(target?.conditions, 'invisible') ||
+      hasConditionTag(targetConditionTags, 'invisible')
+    ) {
       reminders.push('Reminder: Target is Invisible (attacks against it: disadvantage)');
     }
-    if (hasCondition(attacker.conditions, 'invisible') || hasConditionTag(attacker.tags, 'invisible')) {
+    if (
+      hasCondition(attacker.conditions, 'invisible') ||
+      hasConditionTag(attackerConditionTags, 'invisible')
+    ) {
       reminders.push('Reminder: Attacker is Invisible (attacks: advantage)');
     }
   }
 
   if (
     event === 'save' &&
-    (hasCondition(attacker.conditions, 'restrained') || hasConditionTag(attacker.tags, 'restrained'))
+    (hasCondition(attacker.conditions, 'restrained') || hasConditionTag(attackerConditionTags, 'restrained'))
   ) {
     reminders.push('Reminder: Restrained (DEX saves: disadvantage)');
   }
