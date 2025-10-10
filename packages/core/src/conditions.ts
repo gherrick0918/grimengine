@@ -1,4 +1,4 @@
-export type Condition = 'prone' | 'restrained' | 'poisoned' | 'grappled';
+export type Condition = 'prone' | 'restrained' | 'poisoned' | 'grappled' | 'invisible';
 
 export interface ConditionSet {
   [name: string]: true;

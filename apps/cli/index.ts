@@ -422,7 +422,7 @@ async function handleSpellCommand(rawArgs: string[]): Promise<void> {
 
 const ABILITY_NAMES: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
 const SKILL_NAMES = Object.keys(SKILL_ABILITY) as SkillName[];
-const CONDITION_NAMES: Condition[] = ['prone', 'restrained', 'poisoned', 'grappled'];
+const CONDITION_NAMES: Condition[] = ['prone', 'restrained', 'poisoned', 'grappled', 'invisible'];
 
 function isAbilityName(value: string): value is AbilityName {
   return ABILITY_NAMES.includes(value as AbilityName);
