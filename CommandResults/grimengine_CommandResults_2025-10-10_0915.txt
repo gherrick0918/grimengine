@@ -1,0 +1,160 @@
+PS C:\dev\grimengine> pnpm test; `
+>> pnpm run seed:characters; `
+>> pnpm dev -- encounter start; `
+>> pnpm dev -- character load-name "Bruni"; `
+>> pnpm dev -- encounter add pc "Bruni"; `
+>> pnpm dev -- character load-name "Kara"; `
+>> pnpm dev -- encounter add pc "Kara"; `
+>> pnpm dev -- encounter add goblin; `
+>> pnpm dev -- encounter inspire "Bruni" "Kara" --die d8 --auto-clear; `
+>> pnpm dev -- encounter remind "Kara"; `
+>> pnpm dev -- encounter attack "Kara" "Goblin #1"; `
+>> pnpm dev -- encounter inspire "Bruni" "Kara" --die d8; `
+>> pnpm dev -- encounter inspire use "Kara"; `
+>> pnpm dev -- encounter end; `
+>> pnpm dev -- character unload
+
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/cli, @grimengine/core, @grimengine/dnd5e-api, @grimengine/rules-srd
+• Running test in 4 packages
+• Remote caching disabled
+@grimengine/core:test: cache miss, executing 129dab10219c9dc5
+@grimengine/cli:test: cache miss, executing cfaa318bd001ae99
+@grimengine/cli:test: 
+@grimengine/cli:test: > @grimengine/cli@0.0.0 test C:\dev\grimengine\apps\cli
+@grimengine/cli:test: > vitest --config vitest.config.ts
+@grimengine/cli:test:
+@grimengine/core:test: 
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest --config vitest.config.ts
+@grimengine/core:test:
+@grimengine/cli:test: 
+@grimengine/cli:test:  RUN  v3.2.4 C:/dev/grimengine/apps/cli
+@grimengine/cli:test:
+@grimengine/core:test:
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test:
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 9ms
+@grimengine/core:test:  ✓ tests/encounter.test.ts (3 tests) 13ms
+@grimengine/core:test:  ✓ tests/tags.test.ts (3 tests) 11ms
+@grimengine/core:test:  ✓ tests/bless.test.ts (3 tests) 13ms
+@grimengine/core:test:  ✓ tests/character.test.ts (6 tests) 12ms
+@grimengine/core:test:  ✓ tests/spells.test.ts (9 tests) 19ms
+@grimengine/core:test:  ✓ tests/guidance_bi_reminders.test.ts (4 tests) 9ms
+@grimengine/cli:test:  ✓ tests/encounter-snapshots.test.ts (2 tests) 19ms
+@grimengine/cli:test: 
+@grimengine/cli:test:  Test Files  1 passed (1)
+@grimengine/cli:test:       Tests  2 passed (2)
+@grimengine/cli:test:    Start at  09:15:17
+@grimengine/cli:test:    Duration  1.39s (transform 538ms, setup 0ms, collect 591ms, tests 19ms, environment 0ms, prepare 363ms)
+@grimengine/cli:test: 
+@grimengine/core:test:  ✓ tests/conditions.test.ts (11 tests) 19ms
+@grimengine/core:test:  ✓ tests/combat.test.ts (8 tests) 17ms
+@grimengine/core:test:  ✓ tests/weapons.test.ts (6 tests) 11ms
+@grimengine/core:test:  ✓ tests/huntersMark.test.ts (4 tests) 10ms
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 11ms
+@grimengine/core:test:  ✓ tests/encounter-checks.test.ts (4 tests) 12ms
+@grimengine/core:test:  ✓ tests/derived.test.ts (7 tests) 9ms
+@grimengine/core:test:  ✓ tests/loot.test.ts (5 tests) 11ms
+@grimengine/core:test:  ✓ tests/skills.test.ts (4 tests) 10ms
+@grimengine/core:test:  ✓ tests/reminders.test.ts (4 tests) 10ms
+@grimengine/core:test:  ✓ tests/slots.test.ts (5 tests) 12ms
+@grimengine/core:test:  ✓ tests/bardicInspiration.consume.test.ts (2 tests) 8ms
+@grimengine/core:test:  ✓ tests/checks.test.ts (5 tests) 10ms
+@grimengine/core:test:  ✓ tests/concentrationDamageReminders.test.ts (4 tests) 6ms
+@grimengine/core:test:  ✓ tests/monster-normalize.test.ts (1 test) 4ms
+@grimengine/core:test:  ✓ tests/derivationParity.test.ts (3 tests) 8ms
+@grimengine/core:test:  ✓ tests/concentration.test.ts (3 tests) 5ms
+@grimengine/core:test: 
+@grimengine/core:test:  Test Files  24 passed (24)
+@grimengine/core:test:       Tests  117 passed (117)
+@grimengine/core:test:    Start at  09:15:17
+@grimengine/core:test:    Duration  3.36s (transform 1.53s, setup 0ms, collect 3.23s, tests 260ms, environment 8ms, prepare 6.61s)
+@grimengine/core:test:
+
+ Tasks:    2 successful, 2 total
+Cached:    0 cached, 2 total
+  Time:    5.462s
+
+                                                                                                                                                     
+> grimengine@1.0.0 seed:characters C:\dev\grimengine
+> tsx tools/seed-characters.ts
+
+Seeded Bruni -> .data\characters\Bruni.json
+Seeded Kara -> .data\characters\Kara.json
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "start"
+
+Encounter started.
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "load-name" "Bruni"
+
+Loaded character Bruni (lvl 3). PB +2
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "pc" "Bruni"
+
+Added PC Bruni (id=bruni).
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "load-name" "Kara"
+
+Loaded character Kara (lvl 3). PB +2
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "pc" "Kara"
+
+Added PC Kara (id=kara).
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "goblin"
+
+Added 1 Goblin on side 'foe': Goblin #1 (id=goblin-1)
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "inspire" "Bruni" "Kara" "--die" "d8" "--auto-clear"
+
+Bardic Inspiration applied: Bruni → Kara (+d8, auto-clear)
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "remind" "Kara"
+
+Reminder: Bardic Inspiration (+d8 to attack; after seeing roll; auto-clear)
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "attack" "Kara" "Goblin #1"
+
+Mode: melee (conditions: none)
+Advantage state: normal
+Reminder: Bardic Inspiration (+d8 to attack; after seeing roll; auto-clear)
+Attack: 1d20+2 vs AC 15
+Rolls: [3] → natural 3 → total 5 → MISS
+Defender Goblin #1 (id=goblin-1) now has 7/7 HP (active).
+(Bardic Inspiration consumed.)
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "inspire" "Bruni" "Kara" "--die" "d8"
+
+Bardic Inspiration applied: Bruni → Kara (+d8)
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "inspire" "use" "Kara"
+
+Using Bardic Inspiration on Kara: add +d8 (after seeing the roll).
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "end"
+
+Encounter ended.
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "unload"
+
+Character session cleared.
+PS C:\dev\grimengine> 

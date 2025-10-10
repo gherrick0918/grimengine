@@ -1,0 +1,7 @@
+Summary
+
+No code changes were required because the existing reminders already surface Prone, Restrained, and Invisible cues for both attacker and target, including the DEX-save disadvantage note for Restrained conditions.
+
+The CLI already supports toggling encounter prone|restrained|invisible <actor> <on|off>, adding the appropriate condition:* tags with helpful console feedback.
+
+The core test suite already exercises these reminders via conditions.reminders.test.ts, covering all three conditions and ensuring the expected messaging is emitted.
