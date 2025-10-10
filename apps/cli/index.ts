@@ -175,6 +175,8 @@ function showUsage(): void {
   console.log(
     '  pnpm dev -- encounter add <goblin|bandit|skeleton> [--n <count>] [--name <BaseName>] [--side <party|foe|neutral>]',
   );
+  console.log('  pnpm dev -- encounter adv "<Name>" <on|off>');
+  console.log('  pnpm dev -- encounter dis "<Name>" <on|off>');
   console.log('  pnpm dev -- encounter list');
   console.log('  pnpm dev -- encounter save "<name>"');
   console.log('  pnpm dev -- encounter ls');
@@ -3172,6 +3174,75 @@ function parseToggleValue(raw: string | undefined): boolean {
   throw new Error(`Unknown toggle value "${raw}". Expected "on" or "off".`);
 }
 
+function handleEncounterAdvantageToggleCommand(
+  rawArgs: string[],
+  kind: 'advantage' | 'disadvantage',
+): void {
+  if (rawArgs.length < 2) {
+    console.error(`Usage: pnpm dev -- encounter ${kind === 'advantage' ? 'adv' : 'dis'} "<actorIdOrName>" <on|off>`);
+    process.exit(1);
+  }
+
+  const [identifier, toggle, ...rest] = rawArgs;
+
+  if (!identifier) {
+    console.error('Actor identifier is required.');
+    process.exit(1);
+  }
+
+  if (rest.length > 0) {
+    console.warn(`Ignoring extra argument(s): ${rest.join(', ')}`);
+  }
+
+  let turnOn: boolean;
+  try {
+    turnOn = parseToggleValue(toggle);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const encounter = requireEncounterState();
+
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, identifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const tagKey = `state:${kind}`;
+  const label = kind === 'advantage' ? 'Advantage' : 'Disadvantage';
+  const actorTags = actor.tags ?? [];
+  const matching = actorTags.filter((tag) => tag.key?.toLowerCase() === tagKey);
+
+  let updatedEncounter: EncounterState = encounter;
+
+  if (turnOn) {
+    if (matching.length === 0) {
+      updatedEncounter = encounterAddActorTag(updatedEncounter, actor.id, {
+        key: tagKey,
+        value: true,
+      });
+    }
+  } else {
+    matching.forEach((tag) => {
+      updatedEncounter = encounterRemoveActorTag(updatedEncounter, actor.id, tag.id);
+    });
+  }
+
+  saveEncounter(updatedEncounter);
+  console.log(`${actor.name}: ${label} ${turnOn ? 'ON' : 'OFF'}`);
+  process.exit(0);
+}
+
 function handleEncounterConditionTagCommand(rawArgs: string[], condition: ConditionTagKey): void {
   if (rawArgs.length < 2) {
     console.error(`Usage: pnpm dev -- encounter ${condition} "<actorIdOrName>" <on|off>`);
@@ -4742,6 +4813,16 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'remind') {
     handleEncounterRemindCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'adv' || subcommand === 'advantage') {
+    handleEncounterAdvantageToggleCommand(rest, 'advantage');
+    return;
+  }
+
+  if (subcommand === 'dis' || subcommand === 'disadvantage') {
+    handleEncounterAdvantageToggleCommand(rest, 'disadvantage');
     return;
   }
 
