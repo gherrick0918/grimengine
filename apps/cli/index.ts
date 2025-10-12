@@ -53,6 +53,7 @@ import {
   clearAllConcentration,
   combineAdvantage,
   attackAdvFromConditions,
+  computeAdvantageState,
   hasCondition,
   recordLoot as encounterRecordLoot,
   recordXP as encounterRecordXP,
@@ -113,6 +114,7 @@ import type { NormalizedSpell } from '@grimengine/dnd5e-api/spells.js';
 import { clearEncounter, loadEncounter, saveEncounter } from './encounterSession';
 import { deleteEncounterByName, listEncounterSaves, loadEncounterByName, saveEncounterAs } from './enc-session';
 import { clearCharacter, loadCharacter, saveCharacter } from './session';
+import { loadSettings, saveSettings } from './settings';
 import { listVaultNames, loadFromVault, saveToVault } from './char-vault';
 import { getActorIdByName } from './lib/resolve';
 
@@ -132,6 +134,8 @@ function showUsage(): void {
   console.log(
     '  pnpm dev -- resolve --dmg "<expression>" [--mod <+n|-n>] [--proficient] [--pb <n>] [--adv|--dis] [--ac <n>] [--seed <value>] [--crit] [--resist] [--vuln] [--dmg-seed <value>]' 
   );
+  console.log('  pnpm dev -- settings get');
+  console.log('  pnpm dev -- settings set respect-adv <on|off>');
   console.log('  pnpm dev -- abilities roll [--seed <value>] [--count <n>] [--drop <n>] [--sort asc|desc|none]');
   console.log('  pnpm dev -- abilities standard');
   console.log('  pnpm dev -- abilities pointbuy "<comma-separated scores>"');
@@ -187,7 +191,7 @@ function showUsage(): void {
   console.log(
     '  pnpm dev -- encounter check "<actorIdOrName>" <ABILITY> [--dc <n>] [--skill "<SkillName>"] [--adv|--dis] [--seed <value>]',
   );
-  console.log('  pnpm dev -- encounter attack "<attacker>" "<defender>" [--melee|--ranged] [--adv|--dis] [--twohanded] [--seed <value>]');
+  console.log('  pnpm dev -- encounter attack "<attacker>" "<defender>" [--mode melee|ranged] [--adv|--dis] [--twohanded] [--respect-adv] [--seed <value>]');
   console.log('  pnpm dev -- encounter concentration start "<casterIdOrName>" "<Spell Name>" [--target "<id|name>"]');
   console.log('  pnpm dev -- encounter concentration end "<casterIdOrName>"');
   console.log('  pnpm dev -- encounter concentration check "<casterIdOrName>" <damage> [--seed <value>]');
@@ -4396,10 +4400,10 @@ function handleEncounterCheckCommand(rawArgs: string[]): void {
   process.exit(0);
 }
 
-function handleEncounterAttackCommand(rawArgs: string[]): void {
+async function handleEncounterAttackCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length < 2) {
     console.error(
-      'Usage: pnpm dev -- encounter attack "<attacker>" "<defender>" [--melee|--ranged] [--adv|--dis] [--twohanded] [--seed <value>]',
+      'Usage: pnpm dev -- encounter attack "<attacker>" "<defender>" [--mode melee|ranged] [--adv|--dis] [--twohanded] [--respect-adv] [--seed <value>]',
     );
     process.exit(1);
   }
@@ -4409,44 +4413,75 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
   let disadvantage = false;
   let twoHanded = false;
   let seed: string | undefined;
-  let mode: 'melee' | 'ranged' | undefined;
+  let mode: 'melee' | 'ranged' = 'melee';
+  let respectAdvOverride = false;
 
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
     const lower = arg.toLowerCase();
 
-    if (lower === '--melee') {
-      if (mode && mode !== 'melee') {
-        console.error('Cannot specify both --melee and --ranged.');
+    if (lower === '--mode') {
+      if (i + 1 >= rest.length) {
+        console.error('Expected value after --mode.');
         process.exit(1);
       }
+      const value = rest[i + 1]?.toLowerCase();
+      if (value === 'melee' || value === 'ranged') {
+        mode = value;
+      } else {
+        console.error('Mode must be either "melee" or "ranged".');
+        process.exit(1);
+      }
+      i += 1;
+      continue;
+    }
+
+    if (lower.startsWith('--mode=')) {
+      const value = arg.slice('--mode='.length).toLowerCase();
+      if (value === 'melee' || value === 'ranged') {
+        mode = value as 'melee' | 'ranged';
+      } else {
+        console.error('Mode must be either "melee" or "ranged".');
+        process.exit(1);
+      }
+      continue;
+    }
+
+    if (lower === '--melee') {
       mode = 'melee';
       continue;
     }
+
     if (lower === '--ranged') {
-      if (mode && mode !== 'ranged') {
-        console.error('Cannot specify both --melee and --ranged.');
-        process.exit(1);
-      }
       mode = 'ranged';
       continue;
     }
+
+    if (lower === '--respect-adv') {
+      respectAdvOverride = true;
+      continue;
+    }
+
     if (lower === '--adv' || lower === '--advantage') {
       advantage = true;
       continue;
     }
+
     if (lower === '--dis' || lower === '--disadvantage' || lower === '--disadv') {
       disadvantage = true;
       continue;
     }
+
     if (lower === '--twohanded' || lower === '--two-handed') {
       twoHanded = true;
       continue;
     }
+
     if (arg.startsWith('--seed=')) {
       seed = arg.slice('--seed='.length);
       continue;
     }
+
     if (lower === '--seed') {
       if (i + 1 >= rest.length) {
         console.error('Expected value after --seed.');
@@ -4477,6 +4512,7 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
       console.error(error.message);
     }
     process.exit(1);
+    return;
   }
 
   if (encounter.defeated.has(attacker.id) || attacker.hp <= 0) {
@@ -4489,7 +4525,7 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
     process.exit(1);
   }
 
-  const effectiveMode = mode ?? 'melee';
+  const effectiveMode = mode;
   const conditionFlags = attackAdvFromConditions(attacker.conditions, defender.conditions, effectiveMode);
   const combinedFlags = combineAdvantage({ advantage, disadvantage }, conditionFlags);
   const conditionEffects = describeConditionEffects(attacker, defender, effectiveMode);
@@ -4500,7 +4536,29 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
       conditionSummary = `${conditionSummary} → cancel`;
     }
   }
-  const finalAdvantage = combinedFlags.advantage
+
+  const settings = await loadSettings();
+  const useAdvantageAutomation = Boolean(settings.respectAdv) || respectAdvOverride;
+
+  let computedAdvState: 'normal' | 'advantage' | 'disadvantage' = 'normal';
+  if (useAdvantageAutomation) {
+    computedAdvState = computeAdvantageState(encounter, attacker.id, defender.id, effectiveMode);
+  }
+
+  const hasComputedAdvantage = useAdvantageAutomation && computedAdvState === 'advantage';
+  const hasComputedDisadvantage = useAdvantageAutomation && computedAdvState === 'disadvantage';
+
+  const totalAdvantage = advantage || hasComputedAdvantage;
+  const totalDisadvantage = disadvantage || hasComputedDisadvantage;
+
+  const finalAdvState: 'normal' | 'advantage' | 'disadvantage' =
+    totalAdvantage && !totalDisadvantage
+      ? 'advantage'
+      : totalDisadvantage && !totalAdvantage
+      ? 'disadvantage'
+      : 'normal';
+
+  const fallbackState = combinedFlags.advantage
     ? 'advantage'
     : combinedFlags.disadvantage
     ? 'disadvantage'
@@ -4508,21 +4566,41 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
 
   const reminderLines = remindersFor(encounter, attacker.id, defender.id, 'attack');
 
-  const result = encounterActorAttack(encounter, attacker.id, defender.id, {
+  const attackOptions: {
+    advantage?: boolean;
+    disadvantage?: boolean;
+    twoHanded?: boolean;
+    seed?: string;
+    mode?: 'melee' | 'ranged';
+    advStateOverride?: 'normal' | 'advantage' | 'disadvantage';
+  } = {
     advantage,
     disadvantage,
     twoHanded,
     seed,
     mode: effectiveMode,
-  });
+  };
+
+  if (useAdvantageAutomation) {
+    attackOptions.advStateOverride = finalAdvState;
+  }
+
+  const result = encounterActorAttack(encounter, attacker.id, defender.id, attackOptions);
 
   encounter = result.state;
   const autoConsumption = consumeBardicInspiration(encounter, attacker.id, { autoOnly: true });
   encounter = autoConsumption.state;
   saveEncounter(encounter);
 
+  const displayAdvState = useAdvantageAutomation ? finalAdvState : fallbackState;
+
   console.log(`Mode: ${effectiveMode} (conditions: ${conditionSummary})`);
-  console.log(`Advantage state: ${finalAdvantage}`);
+  if (useAdvantageAutomation) {
+    console.log(`Advantage state: ${displayAdvState}`);
+  } else {
+    console.log(`Advantage state: ${displayAdvState} (respectAdv OFF)`);
+  }
+
   const outcome = getAttackOutcome(result.attack);
   for (const line of reminderLines) {
     console.log(line);
@@ -4543,9 +4621,7 @@ function handleEncounterAttackCommand(rawArgs: string[]): void {
   }
 
   const damageApplied =
-    result.damage && (result.attack.isCrit || result.attack.hit === true)
-      ? result.damage.finalTotal
-      : 0;
+    result.damage && (result.attack.isCrit || result.attack.hit === true) ? result.damage.finalTotal : 0;
   if (damageApplied > 0) {
     const reminderLines = concentrationReminderLinesForDamage(encounter, defender.id, damageApplied);
     for (const line of reminderLines) {
@@ -4709,6 +4785,58 @@ function handleEncounterEndCommand(): void {
   process.exit(0);
 }
 
+async function handleSettingsCommand(rawArgs: string[]): Promise<void> {
+  if (rawArgs.length === 0) {
+    console.error('Missing settings subcommand.');
+    showUsage();
+    process.exit(1);
+  }
+
+  const [subcommand, ...rest] = rawArgs;
+  if (subcommand === 'get') {
+    const settings = await loadSettings();
+    console.log(JSON.stringify(settings, null, 2));
+    process.exit(0);
+  }
+
+  if (subcommand === 'set') {
+    if (rest.length === 0) {
+      console.error('Missing setting name.');
+      process.exit(1);
+    }
+    const [settingName, valueRaw, ...extra] = rest;
+    if (!valueRaw) {
+      console.error('Missing value for settings set command.');
+      process.exit(1);
+    }
+    if (extra.length > 0) {
+      console.warn(`Ignoring extra argument(s): ${extra.join(', ')}`);
+    }
+
+    const normalizedName = settingName.trim().toLowerCase();
+    const normalizedValue = valueRaw.trim().toLowerCase();
+
+    if (normalizedName !== 'respect-adv') {
+      console.error(`Unknown setting: ${settingName}`);
+      process.exit(1);
+    }
+
+    if (normalizedValue !== 'on' && normalizedValue !== 'off') {
+      console.error("Value must be 'on' or 'off'.");
+      process.exit(1);
+    }
+
+    const settings = await loadSettings();
+    settings.respectAdv = normalizedValue === 'on';
+    await saveSettings(settings);
+    console.log(`respectAdv = ${settings.respectAdv ? 'ON' : 'OFF'}`);
+    process.exit(0);
+  }
+
+  console.error(`Unknown settings subcommand: ${subcommand}`);
+  process.exit(1);
+}
+
 async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length === 0) {
     console.error('Missing encounter subcommand.');
@@ -4864,7 +4992,7 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
         try {
           const attackerId = getActorIdByName(encounter, rest[0]!);
           const defenderId = getActorIdByName(encounter, rest[1]!);
-          handleEncounterAttackCommand([attackerId, defenderId]);
+          await handleEncounterAttackCommand([attackerId, defenderId]);
           return;
         } catch (error) {
           const attackerIsId = Boolean(encounter.actors[rest[0]!]);
@@ -4881,7 +5009,7 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
       }
     }
 
-    handleEncounterAttackCommand(rest);
+    await handleEncounterAttackCommand(rest);
     return;
   }
 
@@ -5879,6 +6007,11 @@ async function main(): Promise<void> {
 
   if (command === 'encounter') {
     await handleEncounterCommand(rest);
+    return;
+  }
+
+  if (command === 'settings') {
+    await handleSettingsCommand(rest);
     return;
   }
 

@@ -136,3 +136,5 @@ export {
 } from './features/bardicInspiration.js';
 export { remindersFor } from './reminders.js';
 export type { ReminderEvent } from './reminders.js';
+export { computeAdvantageState } from './advantage.js';
+export type { AdvantageState, AttackMode } from './advantage.js';
