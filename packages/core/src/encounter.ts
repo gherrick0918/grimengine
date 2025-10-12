@@ -206,7 +206,7 @@ export function createEncounter(seed?: string): EncounterState {
     lootLog: [],
     xpLog: [],
     concentration: {},
-  };
+  }
 }
 
 function nextTagIdentifier(tags: ActorTag[] | undefined): string {
@@ -486,6 +486,7 @@ export function actorAttack(
     advantage?: boolean;
     disadvantage?: boolean;
     seed?: string;
+    advStateOverride?: 'normal' | 'advantage' | 'disadvantage';
   },
 ): { state: EncounterState; attack: ResolveAttackResult['attack']; damage?: ResolveAttackResult['damage']; defenderHp: number } {
   const attacker = state.actors[attackerId];
@@ -511,11 +512,23 @@ export function actorAttack(
   const damageSeed = attackSeedBase ? `${attackSeedBase}:damage` : undefined;
 
   const mode = opts?.mode ?? 'melee';
-  const conditionFlags = attackAdvFromConditions(attacker.conditions, defender.conditions, mode);
-  const combinedFlags = combineAdvantage(
-    { advantage: opts?.advantage, disadvantage: opts?.disadvantage },
-    conditionFlags,
-  );
+  let combinedFlags: { advantage?: boolean; disadvantage?: boolean };
+
+  if (opts?.advStateOverride) {
+    if (opts.advStateOverride === 'advantage') {
+      combinedFlags = { advantage: true };
+    } else if (opts.advStateOverride === 'disadvantage') {
+      combinedFlags = { disadvantage: true };
+    } else {
+      combinedFlags = {};
+    }
+  } else {
+    const conditionFlags = attackAdvFromConditions(attacker.conditions, defender.conditions, mode);
+    combinedFlags = combineAdvantage(
+      { advantage: opts?.advantage, disadvantage: opts?.disadvantage },
+      conditionFlags,
+    );
+  }
 
   const attackResult = resolveAttack({
     abilityMod: attackMod,
