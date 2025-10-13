@@ -15,6 +15,11 @@ import type { CoinBundle } from './loot.js';
 
 export type Side = 'party' | 'foe' | 'neutral';
 
+export interface ActorTagDuration {
+  rounds: number;
+  at?: 'turnStart' | 'turnEnd';
+}
+
 export interface ActorTag {
   id: string;
   text: string;
@@ -25,6 +30,7 @@ export interface ActorTag {
   key?: string;
   value?: unknown;
   payload?: Record<string, unknown>;
+  duration?: ActorTagDuration;
 }
 
 export interface ActorBase {
@@ -169,6 +175,30 @@ function nextActiveIndex(state: EncounterState, startIndex: number): { index: nu
   return { index: startIndex, wrapped: false };
 }
 
+function previousActiveIndex(state: EncounterState, startIndex: number): { index: number; wrapped: boolean } {
+  const { order } = state;
+  if (order.length === 0) {
+    return { index: 0, wrapped: false };
+  }
+
+  let index = startIndex;
+  let wrapped = false;
+  const total = order.length;
+  for (let step = 0; step < total; step += 1) {
+    const nextIndex = (index - 1 + total) % total;
+    if (!wrapped && nextIndex >= startIndex) {
+      wrapped = true;
+    }
+    index = nextIndex;
+    const actorId = order[index]?.actorId;
+    if (actorId && isActorActive(state, actorId)) {
+      return { index, wrapped };
+    }
+  }
+
+  return { index: startIndex, wrapped: false };
+}
+
 function sortInitiativeEntries(entries: InitiativeEntry[], state: EncounterState): InitiativeEntry[] {
   const decorated = entries.map((entry, index) => ({
     entry,
@@ -229,8 +259,10 @@ export function addActorTag(
   }
 
   const currentTags = actor.tags ? [...actor.tags] : [];
+  const { duration, ...rest } = tag;
   const newTag: ActorTag = {
-    ...tag,
+    ...rest,
+    duration: duration ? { ...duration } : undefined,
     id: nextTagIdentifier(actor.tags),
     addedAtRound: state.round,
   };
@@ -385,22 +417,119 @@ export function rollInitiative(state: EncounterState): EncounterState {
   return nextState;
 }
 
+type TurnPhase = 'turnStart' | 'turnEnd';
+
+function tickActorTagDurations(
+  state: EncounterState,
+  actorId: string,
+  phase: TurnPhase,
+): { state: EncounterState; expired: ActorTag[] } {
+  const actor = state.actors[actorId];
+  if (!actor || !actor.tags || actor.tags.length === 0) {
+    return { state, expired: [] };
+  }
+
+  let changed = false;
+  const nextTags: ActorTag[] = [];
+  const expired: ActorTag[] = [];
+
+  actor.tags.forEach((tag) => {
+    const duration = tag.duration;
+    if (!duration) {
+      nextTags.push(tag);
+      return;
+    }
+    const at = duration.at ?? 'turnEnd';
+    if (at !== phase) {
+      nextTags.push(tag);
+      return;
+    }
+    const remaining = typeof duration.rounds === 'number' ? duration.rounds : 0;
+    if (remaining <= 1) {
+      changed = true;
+      expired.push(tag);
+      return;
+    }
+    changed = true;
+    nextTags.push({ ...tag, duration: { ...duration, rounds: remaining - 1 } });
+  });
+
+  if (!changed) {
+    return { state, expired: [] };
+  }
+
+  const updatedActor: Actor = { ...actor, tags: nextTags };
+  const nextState: EncounterState = { ...state, actors: { ...state.actors, [actorId]: updatedActor } };
+  return { state: nextState, expired };
+}
+
 export function nextTurn(state: EncounterState): EncounterState {
   if (state.order.length === 0) {
     return state;
   }
 
-  let round = state.round;
   let turnIndex = state.turnIndex;
+  const currentEntry = state.order[turnIndex];
+  if (!currentEntry || !isActorActive(state, currentEntry.actorId)) {
+    const firstActive = findFirstActiveIndex(state, state.order);
+    if (firstActive === -1) {
+      return state;
+    }
+    turnIndex = firstActive;
+  }
 
-  const { index, wrapped } = nextActiveIndex(state, turnIndex);
+  let nextState = state.turnIndex === turnIndex ? state : { ...state, turnIndex };
+
+  const currentActorId = nextState.order[nextState.turnIndex]?.actorId;
+  if (currentActorId) {
+    const tickResult = tickActorTagDurations(nextState, currentActorId, 'turnEnd');
+    nextState = tickResult.state;
+  }
+
+  let round = nextState.round;
+
+  const { index, wrapped } = nextActiveIndex(nextState, nextState.turnIndex);
   turnIndex = index;
   if (wrapped) {
     round += 1;
   }
 
-  const nextState: EncounterState = { ...state, turnIndex, round };
-  return expireActorTags(nextState);
+  nextState = { ...nextState, turnIndex, round };
+  nextState = expireActorTags(nextState);
+
+  const nextActorId = nextState.order[nextState.turnIndex]?.actorId;
+  if (nextActorId) {
+    const tickResult = tickActorTagDurations(nextState, nextActorId, 'turnStart');
+    nextState = tickResult.state;
+  }
+
+  return nextState;
+}
+
+export function previousTurn(state: EncounterState): EncounterState {
+  if (state.order.length === 0) {
+    return state;
+  }
+
+  let turnIndex = state.turnIndex;
+  const currentEntry = state.order[turnIndex];
+  if (!currentEntry || !isActorActive(state, currentEntry.actorId)) {
+    const firstActive = findFirstActiveIndex(state, state.order);
+    if (firstActive === -1) {
+      return state;
+    }
+    turnIndex = firstActive;
+  }
+
+  let round = state.round;
+  const { index, wrapped } = previousActiveIndex(state, turnIndex);
+  turnIndex = index;
+  if (wrapped) {
+    round = Math.max(0, round - 1);
+  }
+
+  const nextState: EncounterState = expireActorTags({ ...state, turnIndex, round });
+  return nextState;
 }
 
 export function currentActor(state: EncounterState): Actor | null {
