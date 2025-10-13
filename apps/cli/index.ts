@@ -42,6 +42,7 @@ import {
   removeActor as removeEncounterActor,
   rollInitiative as rollEncounterInitiative,
   nextTurn as encounterNextTurn,
+  previousTurn as encounterPreviousTurn,
   currentActor as encounterCurrentActor,
   actorAttack as encounterActorAttack,
   encounterAbilityCheck,
@@ -188,6 +189,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter delete "<name>"');
   console.log('  pnpm dev -- encounter roll-init');
   console.log('  pnpm dev -- encounter next');
+  console.log('  pnpm dev -- encounter prev');
   console.log(
     '  pnpm dev -- encounter check "<actorIdOrName>" <ABILITY> [--dc <n>] [--skill "<SkillName>"] [--adv|--dis] [--seed <value>]',
   );
@@ -714,6 +716,12 @@ function formatTagRange(tag: ActorTag): string | undefined {
   if (typeof tag.expiresAtRound === 'number') {
     return `R${tag.addedAtRound}→R${tag.expiresAtRound}`;
   }
+  if (tag.duration) {
+    const rounds = tag.duration.rounds ?? 0;
+    const phase = tag.duration.at === 'turnStart' ? 'start' : 'end';
+    const roundLabel = `${rounds} round${rounds === 1 ? '' : 's'}`;
+    return `${roundLabel} (${phase})`;
+  }
   return undefined;
 }
 
@@ -764,10 +772,35 @@ function collectActorTags(state: EncounterState): Record<string, ActorTag[]> {
   const result: Record<string, ActorTag[]> = {};
   Object.entries(state.actors).forEach(([actorId, actor]) => {
     if (actor.tags && actor.tags.length > 0) {
-      result[actorId] = actor.tags.map((tag) => ({ ...tag }));
+      result[actorId] = actor.tags.map((tag) => ({
+        ...tag,
+        duration: tag.duration ? { ...tag.duration } : undefined,
+      }));
     }
   });
   return result;
+}
+
+function diffExpiredTags(
+  before: Record<string, ActorTag[]>,
+  after: EncounterState,
+): { actorId: string; tag: ActorTag }[] {
+  const expired: { actorId: string; tag: ActorTag }[] = [];
+  Object.entries(before).forEach(([actorId, tags]) => {
+    const remainingIds = new Set((after.actors[actorId]?.tags ?? []).map((tag) => tag.id));
+    tags.forEach((tag) => {
+      if (remainingIds.has(tag.id)) {
+        return;
+      }
+      if (tag.duration || typeof tag.expiresAtRound === 'number') {
+        if (typeof tag.expiresAtRound === 'number' && after.round <= tag.expiresAtRound) {
+          return;
+        }
+        expired.push({ actorId, tag });
+      }
+    });
+  });
+  return expired;
 }
 
 function describeConditionEffects(
@@ -3260,8 +3293,41 @@ function handleEncounterConditionTagCommand(rawArgs: string[], condition: Condit
     process.exit(1);
   }
 
-  if (rest.length > 0) {
-    console.warn(`Ignoring extra argument(s): ${rest.join(', ')}`);
+  let durationRounds: number | undefined;
+  const unknownArgs: string[] = [];
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i]!;
+    const lower = arg.toLowerCase();
+    if (lower.startsWith('--rounds=')) {
+      const value = arg.slice('--rounds='.length);
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        console.error('`--rounds` must be a positive integer.');
+        process.exit(1);
+      }
+      durationRounds = parsed;
+      continue;
+    }
+    if (lower === '--rounds') {
+      const next = rest[i + 1];
+      if (!next) {
+        console.error('Expected value after --rounds.');
+        process.exit(1);
+      }
+      const parsed = Number.parseInt(next, 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        console.error('`--rounds` must be a positive integer.');
+        process.exit(1);
+      }
+      durationRounds = parsed;
+      i += 1;
+      continue;
+    }
+    unknownArgs.push(arg);
+  }
+
+  if (unknownArgs.length > 0) {
+    console.warn(`Ignoring extra argument(s): ${unknownArgs.join(', ')}`);
   }
 
   let turnOn: boolean;
@@ -3295,12 +3361,15 @@ function handleEncounterConditionTagCommand(rawArgs: string[], condition: Condit
   const actorTags = actor.tags ?? [];
   const matching = actorTags.filter((tag) => tag.key?.toLowerCase() === tagKey);
 
+  const duration = typeof durationRounds === 'number' ? { rounds: durationRounds, at: 'turnEnd' as const } : undefined;
+
   if (turnOn) {
     if (matching.length === 0) {
       updatedEncounter = encounterAddActorTag(updatedEncounter, actor.id, {
         key: tagKey,
         text: label,
         value: true,
+        duration,
       });
     }
   } else {
@@ -4092,16 +4161,7 @@ function handleEncounterNextCommand(): void {
   let encounter = requireEncounterState();
   const previousTags = collectActorTags(encounter);
   encounter = encounterNextTurn(encounter);
-  const expired: { actorId: string; tag: ActorTag }[] = [];
-  const currentRound = encounter.round;
-  Object.entries(previousTags).forEach(([actorId, tags]) => {
-    const remainingIds = new Set((encounter.actors[actorId]?.tags ?? []).map((tag) => tag.id));
-    tags.forEach((tag) => {
-      if (!remainingIds.has(tag.id) && typeof tag.expiresAtRound === 'number' && currentRound > tag.expiresAtRound) {
-        expired.push({ actorId, tag });
-      }
-    });
-  });
+  const expired = diffExpiredTags(previousTags, encounter);
   saveEncounter(encounter);
 
   if (encounter.order.length === 0) {
@@ -4110,21 +4170,42 @@ function handleEncounterNextCommand(): void {
   }
 
   const actor = encounterCurrentActor(encounter);
-  console.log(`Round ${encounter.round}, turn ${encounter.turnIndex + 1}.`);
   if (actor) {
-    console.log(`Current actor: ${actor.name} (id=${actor.id})`);
+    console.log(`Round ${encounter.round} — ${actor.name}'s turn`);
   } else {
-    console.log('No active actor on this turn.');
+    console.log(`Round ${encounter.round} — no active actor`);
   }
-  if (expired.length > 0) {
-    const summary = expired
-      .map(({ actorId, tag }) => {
-        const name = encounter.actors[actorId]?.name ?? actorId;
-        return `${name}[${tag.id}: ${tag.text}]`;
-      })
-      .join(', ');
-    console.log(`Expired tags: ${summary}`);
+  expired.forEach(({ actorId, tag }) => {
+    const name = encounter.actors[actorId]?.name ?? actorId;
+    const label = tag.key ?? tag.text ?? tag.id;
+    console.log(`Effect expired: ${label} (${name})`);
+  });
+  process.exit(0);
+}
+
+function handleEncounterPrevCommand(): void {
+  let encounter = requireEncounterState();
+  const previousTags = collectActorTags(encounter);
+  encounter = encounterPreviousTurn(encounter);
+  const expired = diffExpiredTags(previousTags, encounter);
+  saveEncounter(encounter);
+
+  if (encounter.order.length === 0) {
+    console.log('No initiative order set.');
+    process.exit(0);
   }
+
+  const actor = encounterCurrentActor(encounter);
+  if (actor) {
+    console.log(`Round ${encounter.round} — ${actor.name}'s turn`);
+  } else {
+    console.log(`Round ${encounter.round} — no active actor`);
+  }
+  expired.forEach(({ actorId, tag }) => {
+    const name = encounter.actors[actorId]?.name ?? actorId;
+    const label = tag.key ?? tag.text ?? tag.id;
+    console.log(`Effect expired: ${label} (${name})`);
+  });
   process.exit(0);
 }
 
@@ -4893,6 +4974,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'next') {
     handleEncounterNextCommand();
+    return;
+  }
+
+  if (subcommand === 'prev') {
+    handleEncounterPrevCommand();
     return;
   }
 
