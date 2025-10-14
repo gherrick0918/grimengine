@@ -86,6 +86,8 @@ export {
   addActor,
   removeActor,
   rollInitiative,
+  setInitiative,
+  clearInitiative,
   nextTurn,
   previousTurn,
   currentActor,
