@@ -41,6 +41,8 @@ import {
   addActor as addEncounterActor,
   removeActor as removeEncounterActor,
   rollInitiative as rollEncounterInitiative,
+  setInitiative as setEncounterInitiative,
+  clearInitiative as clearEncounterInitiative,
   nextTurn as encounterNextTurn,
   previousTurn as encounterPreviousTurn,
   currentActor as encounterCurrentActor,
@@ -187,7 +189,10 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter ls');
   console.log('  pnpm dev -- encounter load "<name>"');
   console.log('  pnpm dev -- encounter delete "<name>"');
-  console.log('  pnpm dev -- encounter roll-init');
+  console.log('  pnpm dev -- encounter init roll');
+  console.log('  pnpm dev -- encounter init set "<Name>" <Score>');
+  console.log('  pnpm dev -- encounter init show');
+  console.log('  pnpm dev -- encounter init clear');
   console.log('  pnpm dev -- encounter next');
   console.log('  pnpm dev -- encounter prev');
   console.log(
@@ -4135,26 +4140,117 @@ function handleEncounterListCommand(): void {
   process.exit(0);
 }
 
-function handleEncounterRollInitCommand(): void {
+function handleEncounterInitRollCommand(): void {
   let encounter = requireEncounterState();
   encounter = rollEncounterInitiative(encounter);
   saveEncounter(encounter);
 
-  console.log('Initiative order:');
-  if (encounter.order.length === 0) {
-    console.log('(no actors)');
-  } else {
-    encounter.order.forEach((entry, index) => {
-      const actor = encounter.actors[entry.actorId];
-      const name = actor ? actor.name : entry.actorId;
-      const dex = actor?.abilityMods?.DEX ?? 0;
-      console.log(
-        `${index + 1}. ${name} (id=${entry.actorId}) → ${entry.total} = ${entry.rolled} + Dex ${formatModifier(dex)}`,
-      );
-    });
+  console.log('Initiative rolled.');
+  process.exit(0);
+}
+
+function handleEncounterInitShowCommand(): void {
+  const encounter = loadEncounter();
+  if (!encounter) {
+    console.log('No encounter in progress.');
+    process.exit(0);
   }
 
+  if (encounter.order.length === 0) {
+    console.log('No initiative order set.');
+    process.exit(0);
+  }
+
+  encounter.order.forEach((entry, index) => {
+    const actor = encounter.actors[entry.actorId];
+    const name = actor ? actor.name : entry.actorId;
+    console.log(`${index + 1}. ${name} — ${entry.total}`);
+  });
   process.exit(0);
+}
+
+function handleEncounterInitSetCommand(args: string[]): void {
+  if (args.length < 2) {
+    console.error('Usage: pnpm dev -- encounter init set "<Name>" <Score>');
+    process.exit(1);
+  }
+
+  const scoreRaw = args[args.length - 1]!;
+  const name = args.slice(0, -1).join(' ').trim();
+  const score = Number.parseInt(scoreRaw, 10);
+  if (!Number.isFinite(score)) {
+    console.error('Score must be a valid integer.');
+    process.exit(1);
+  }
+
+  let encounter = requireEncounterState();
+  let actorId: string;
+  try {
+    actorId = getActorIdByName(encounter, name);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error(String(error));
+    }
+    process.exit(1);
+    return;
+  }
+
+  try {
+    encounter = setEncounterInitiative(encounter, actorId, score);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error(String(error));
+    }
+    process.exit(1);
+  }
+
+  saveEncounter(encounter);
+  console.log(`Set ${name} to ${score}`);
+  process.exit(0);
+}
+
+function handleEncounterInitClearCommand(): void {
+  let encounter = requireEncounterState();
+  encounter = clearEncounterInitiative(encounter);
+  saveEncounter(encounter);
+
+  console.log('Initiative cleared.');
+  process.exit(0);
+}
+
+function handleEncounterInitCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Missing encounter init subcommand.');
+    process.exit(1);
+  }
+
+  const [subcommand, ...rest] = rawArgs;
+  if (subcommand === 'roll') {
+    handleEncounterInitRollCommand();
+    return;
+  }
+
+  if (subcommand === 'show') {
+    handleEncounterInitShowCommand();
+    return;
+  }
+
+  if (subcommand === 'set') {
+    handleEncounterInitSetCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'clear') {
+    handleEncounterInitClearCommand();
+    return;
+  }
+
+  console.error(`Unknown encounter init subcommand: ${subcommand}`);
+  process.exit(1);
 }
 
 function handleEncounterNextCommand(): void {
@@ -4163,11 +4259,6 @@ function handleEncounterNextCommand(): void {
   encounter = encounterNextTurn(encounter);
   const expired = diffExpiredTags(previousTags, encounter);
   saveEncounter(encounter);
-
-  if (encounter.order.length === 0) {
-    console.log('No initiative order set.');
-    process.exit(0);
-  }
 
   const actor = encounterCurrentActor(encounter);
   if (actor) {
@@ -4189,11 +4280,6 @@ function handleEncounterPrevCommand(): void {
   encounter = encounterPreviousTurn(encounter);
   const expired = diffExpiredTags(previousTags, encounter);
   saveEncounter(encounter);
-
-  if (encounter.order.length === 0) {
-    console.log('No initiative order set.');
-    process.exit(0);
-  }
 
   const actor = encounterCurrentActor(encounter);
   if (actor) {
@@ -4967,8 +5053,8 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
     return;
   }
 
-  if (subcommand === 'roll-init') {
-    handleEncounterRollInitCommand();
+  if (subcommand === 'init') {
+    handleEncounterInitCommand(rest);
     return;
   }
 

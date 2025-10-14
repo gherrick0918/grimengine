@@ -151,8 +151,11 @@ function findFirstActiveIndex(state: EncounterState, order: InitiativeEntry[]): 
   return -1;
 }
 
-function nextActiveIndex(state: EncounterState, startIndex: number): { index: number; wrapped: boolean } {
-  const { order } = state;
+function nextActiveIndex(
+  state: EncounterState,
+  order: InitiativeEntry[],
+  startIndex: number,
+): { index: number; wrapped: boolean } {
   if (order.length === 0) {
     return { index: 0, wrapped: false };
   }
@@ -175,8 +178,11 @@ function nextActiveIndex(state: EncounterState, startIndex: number): { index: nu
   return { index: startIndex, wrapped: false };
 }
 
-function previousActiveIndex(state: EncounterState, startIndex: number): { index: number; wrapped: boolean } {
-  const { order } = state;
+function previousActiveIndex(
+  state: EncounterState,
+  order: InitiativeEntry[],
+  startIndex: number,
+): { index: number; wrapped: boolean } {
   if (order.length === 0) {
     return { index: 0, wrapped: false };
   }
@@ -222,6 +228,37 @@ function sortInitiativeEntries(entries: InitiativeEntry[], state: EncounterState
   });
 
   return decorated.map((item) => item.entry);
+}
+
+function fallbackInitiativeOrder(state: EncounterState): InitiativeEntry[] {
+  return Object.values(state.actors).map((actor) => ({
+    actorId: actor.id,
+    rolled: 0,
+    total: 0,
+  }));
+}
+
+function effectiveOrder(state: EncounterState): { order: InitiativeEntry[]; fallback: boolean } {
+  if (state.order.length > 0) {
+    return { order: state.order, fallback: false };
+  }
+  return { order: fallbackInitiativeOrder(state), fallback: true };
+}
+
+function clampTurnIndex(index: number, length: number): number {
+  if (length <= 0) {
+    return 0;
+  }
+  if (!Number.isFinite(index)) {
+    return 0;
+  }
+  if (index < 0) {
+    return 0;
+  }
+  if (index >= length) {
+    return length - 1;
+  }
+  return index;
 }
 
 export function createEncounter(seed?: string): EncounterState {
@@ -417,6 +454,43 @@ export function rollInitiative(state: EncounterState): EncounterState {
   return nextState;
 }
 
+export function setInitiative(state: EncounterState, actorId: string, score: number): EncounterState {
+  const actor = state.actors[actorId];
+  if (!actor) {
+    throw new Error(`Unknown actor: ${actorId}`);
+  }
+
+  if (!Number.isFinite(score)) {
+    throw new Error('Initiative score must be a finite number.');
+  }
+
+  const remaining = state.order.filter((entry) => entry.actorId !== actorId);
+  const nextEntries = [...remaining, { actorId, rolled: score, total: score }];
+  const order = sortInitiativeEntries(nextEntries, state);
+
+  let nextState: EncounterState = { ...state, order };
+  if (order.length === 0) {
+    return { ...nextState, round: 0, turnIndex: 0 };
+  }
+
+  const baseRound = nextState.round > 0 ? nextState.round : 1;
+  nextState = { ...nextState, round: baseRound, turnIndex: 0 };
+
+  const firstActive = findFirstActiveIndex(nextState, order);
+  if (firstActive !== -1) {
+    nextState = { ...nextState, turnIndex: firstActive };
+  }
+
+  return nextState;
+}
+
+export function clearInitiative(state: EncounterState): EncounterState {
+  if (state.order.length === 0 && state.turnIndex === 0 && state.round === 0) {
+    return state;
+  }
+  return { ...state, order: [], turnIndex: 0, round: 0 };
+}
+
 type TurnPhase = 'turnStart' | 'turnEnd';
 
 function tickActorTagDurations(
@@ -464,14 +538,15 @@ function tickActorTagDurations(
 }
 
 export function nextTurn(state: EncounterState): EncounterState {
-  if (state.order.length === 0) {
+  const { order, fallback } = effectiveOrder(state);
+  if (order.length === 0) {
     return state;
   }
 
-  let turnIndex = state.turnIndex;
-  const currentEntry = state.order[turnIndex];
+  let turnIndex = clampTurnIndex(state.turnIndex, order.length);
+  const currentEntry = order[turnIndex];
   if (!currentEntry || !isActorActive(state, currentEntry.actorId)) {
-    const firstActive = findFirstActiveIndex(state, state.order);
+    const firstActive = findFirstActiveIndex(state, order);
     if (firstActive === -1) {
       return state;
     }
@@ -480,15 +555,15 @@ export function nextTurn(state: EncounterState): EncounterState {
 
   let nextState = state.turnIndex === turnIndex ? state : { ...state, turnIndex };
 
-  const currentActorId = nextState.order[nextState.turnIndex]?.actorId;
+  const currentActorId = order[turnIndex]?.actorId;
   if (currentActorId) {
     const tickResult = tickActorTagDurations(nextState, currentActorId, 'turnEnd');
     nextState = tickResult.state;
   }
 
-  let round = nextState.round;
+  let round = fallback ? Math.max(nextState.round, 1) : nextState.round;
 
-  const { index, wrapped } = nextActiveIndex(nextState, nextState.turnIndex);
+  const { index, wrapped } = nextActiveIndex(nextState, order, turnIndex);
   turnIndex = index;
   if (wrapped) {
     round += 1;
@@ -497,7 +572,7 @@ export function nextTurn(state: EncounterState): EncounterState {
   nextState = { ...nextState, turnIndex, round };
   nextState = expireActorTags(nextState);
 
-  const nextActorId = nextState.order[nextState.turnIndex]?.actorId;
+  const nextActorId = order[turnIndex]?.actorId;
   if (nextActorId) {
     const tickResult = tickActorTagDurations(nextState, nextActorId, 'turnStart');
     nextState = tickResult.state;
@@ -507,25 +582,26 @@ export function nextTurn(state: EncounterState): EncounterState {
 }
 
 export function previousTurn(state: EncounterState): EncounterState {
-  if (state.order.length === 0) {
+  const { order, fallback } = effectiveOrder(state);
+  if (order.length === 0) {
     return state;
   }
 
-  let turnIndex = state.turnIndex;
-  const currentEntry = state.order[turnIndex];
+  let turnIndex = clampTurnIndex(state.turnIndex, order.length);
+  const currentEntry = order[turnIndex];
   if (!currentEntry || !isActorActive(state, currentEntry.actorId)) {
-    const firstActive = findFirstActiveIndex(state, state.order);
+    const firstActive = findFirstActiveIndex(state, order);
     if (firstActive === -1) {
       return state;
     }
     turnIndex = firstActive;
   }
 
-  let round = state.round;
-  const { index, wrapped } = previousActiveIndex(state, turnIndex);
+  let round = fallback ? Math.max(state.round, 1) : state.round;
+  const { index, wrapped } = previousActiveIndex(state, order, turnIndex);
   turnIndex = index;
   if (wrapped) {
-    round = Math.max(0, round - 1);
+    round = Math.max(fallback ? 1 : 0, round - 1);
   }
 
   const nextState: EncounterState = expireActorTags({ ...state, turnIndex, round });
@@ -533,21 +609,23 @@ export function previousTurn(state: EncounterState): EncounterState {
 }
 
 export function currentActor(state: EncounterState): Actor | null {
-  if (state.order.length === 0) {
+  const { order } = effectiveOrder(state);
+  if (order.length === 0) {
     return null;
   }
 
-  const currentEntry = state.order[state.turnIndex];
+  const turnIndex = clampTurnIndex(state.turnIndex, order.length);
+  const currentEntry = order[turnIndex];
   if (!currentEntry) {
     return null;
   }
 
   if (!isActorActive(state, currentEntry.actorId)) {
-    const firstActive = findFirstActiveIndex(state, state.order);
+    const firstActive = findFirstActiveIndex(state, order);
     if (firstActive === -1) {
       return null;
     }
-    const entry = state.order[firstActive];
+    const entry = order[firstActive];
     return entry ? state.actors[entry.actorId] ?? null : null;
   }
 
