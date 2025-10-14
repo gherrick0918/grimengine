@@ -107,6 +107,7 @@ export {
   getConcentration,
   concentrationDCFromDamage,
 } from './encounter.js';
+export { shortRest, longRest } from './rest.js';
 export { concentrationReminderLinesForDamage } from './concentrationReminders.js';
 export type {
   EncounterState,
