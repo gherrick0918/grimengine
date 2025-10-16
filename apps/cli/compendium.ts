@@ -30,6 +30,90 @@ export async function writeIndex(index: MonsterIndex): Promise<void> {
   await fs.writeFile(FILE, `${JSON.stringify(index, null, 2)}\n`, 'utf-8');
 }
 
+export async function seedBasic(): Promise<number> {
+  const index = await readIndex();
+  const pack: MonsterIndex = {
+    goblin: {
+      slug: 'goblin',
+      name: 'Goblin',
+      armor_class: 15,
+      hit_points: 7,
+      prof_bonus: 2,
+      strength: 8,
+      dexterity: 14,
+      constitution: 10,
+      intelligence: 10,
+      wisdom: 8,
+      charisma: 8,
+      actions: [
+        {
+          name: 'Scimitar',
+          attack_bonus: 4,
+          damage: [
+            {
+              damage_dice: '1d6',
+              damage_bonus: 2,
+            },
+          ],
+        },
+      ],
+    },
+    skeleton: {
+      slug: 'skeleton',
+      name: 'Skeleton',
+      armor_class: 13,
+      hit_points: 13,
+      prof_bonus: 2,
+      strength: 10,
+      dexterity: 14,
+      constitution: 15,
+      intelligence: 6,
+      wisdom: 8,
+      charisma: 5,
+      actions: [
+        {
+          name: 'Shortsword',
+          attack_bonus: 4,
+          damage: [
+            {
+              damage_dice: '1d6',
+              damage_bonus: 2,
+            },
+          ],
+        },
+      ],
+    },
+    bandit: {
+      slug: 'bandit',
+      name: 'Bandit',
+      armor_class: 12,
+      hit_points: 11,
+      prof_bonus: 2,
+      strength: 11,
+      dexterity: 12,
+      constitution: 12,
+      intelligence: 10,
+      wisdom: 10,
+      charisma: 10,
+      actions: [
+        {
+          name: 'Scimitar',
+          attack_bonus: 3,
+          damage: [
+            {
+              damage_dice: '1d6',
+              damage_bonus: 1,
+            },
+          ],
+        },
+      ],
+    },
+  };
+  const nextIndex = { ...index, ...pack };
+  await writeIndex(nextIndex);
+  return Object.keys(nextIndex).length;
+}
+
 async function resolveJsonFiles(srcPath: string): Promise<string[]> {
   const stat = await fs.stat(srcPath);
   if (stat.isDirectory()) {
@@ -49,22 +133,34 @@ function extractSlug(monster: any, fallback: string): string | undefined {
   return slug.length > 0 ? slug : undefined;
 }
 
-export async function importMonsters(srcPath: string): Promise<number> {
-  const index = await readIndex();
-  const files = await resolveJsonFiles(srcPath);
+export async function importMonsters(
+  srcPath: string,
+): Promise<{ ok: true; count: number } | { ok: false; message: string }> {
+  try {
+    const index = await readIndex();
+    const files = await resolveJsonFiles(srcPath);
 
-  for (const file of files) {
-    const contents = await fs.readFile(file, 'utf-8');
-    const monster = JSON.parse(contents);
-    const slug = extractSlug(monster, file);
-    if (!slug) {
-      continue;
+    for (const file of files) {
+      const contents = await fs.readFile(file, 'utf-8');
+      const monster = JSON.parse(contents);
+      const slug = extractSlug(monster, file);
+      if (!slug) {
+        continue;
+      }
+      index[slug] = monster;
     }
-    index[slug] = monster;
-  }
 
-  await writeIndex(index);
-  return Object.keys(index).length;
+    await writeIndex(index);
+    return { ok: true, count: Object.keys(index).length };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return {
+        ok: false,
+        message: "Import path not found. Tip: run 'compendium seed srd-basic' first or provide a valid SRD path.",
+      };
+    }
+    throw error;
+  }
 }
 
 function findCompendiumEntry(index: MonsterIndex, query: string): any | undefined {

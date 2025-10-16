@@ -39,14 +39,14 @@ describe('compendium encounter builder', () => {
       JSON.stringify({ name: 'Goblin Raider', armor_class: 15, hit_points: 11 }, null, 2),
     );
 
-    const countAfterDir = await importMonsters(sourceDir);
-    expect(countAfterDir).toBe(2);
+    const dirResult = await importMonsters(sourceDir);
+    expect(dirResult).toEqual({ ok: true, count: 2 });
 
     const singlePath = join(tempDir, 'captain.json');
     writeFileSync(singlePath, JSON.stringify({ name: 'Bandit Captain', armor_class: 15, hit_points: 65 }, null, 2));
 
-    const finalCount = await importMonsters(singlePath);
-    expect(finalCount).toBe(3);
+    const finalResult = await importMonsters(singlePath);
+    expect(finalResult).toEqual({ ok: true, count: 3 });
 
     const index = await readIndex();
     expect(Object.keys(index)).toEqual(expect.arrayContaining(['dire-wolf', 'goblin-raider', 'bandit-captain']));
