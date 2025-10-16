@@ -128,6 +128,15 @@ import { clearCharacter, loadCharacter, saveCharacter } from './session';
 import { loadSettings, saveSettings } from './settings';
 import { listVaultNames, loadFromVault, saveToVault } from './char-vault';
 import {
+  addMonsters,
+  buildEncounterFromSpec,
+  generateActorId,
+  importMonsters as importCompendiumMonsters,
+  readIndex as readCompendiumIndex,
+  resolveCompendiumTemplate,
+  summarizeTemplate,
+} from './compendium';
+import {
   appendCampaignNote,
   createCampaign,
   formatCampaignParty,
@@ -172,6 +181,8 @@ function showUsage(): void {
   console.log('  pnpm dev -- monster fetch "<name>"');
   console.log('  pnpm dev -- monster list');
   console.log('  pnpm dev -- monster show "<name>"');
+  console.log('  pnpm dev -- compendium import "<path>"');
+  console.log('  pnpm dev -- compendium stats "<slug-or-name>"');
   console.log('  pnpm dev -- spell fetch "<name>"');
   console.log('  pnpm dev -- spell list');
   console.log('  pnpm dev -- spell show "<name>"');
@@ -205,6 +216,7 @@ function showUsage(): void {
   console.log(
     '  pnpm dev -- encounter add <goblin|bandit|skeleton> [--n <count>] [--name <BaseName>] [--side <party|foe|neutral>]',
   );
+  console.log('  pnpm dev -- encounter build "<Spec>" [--side <party|foe|neutral>]');
   console.log('  pnpm dev -- encounter damage "<Name>" <amount>');
   console.log('  pnpm dev -- encounter heal "<Name>" <amount>');
   console.log('  pnpm dev -- encounter adv "<Name>" <on|off>');
@@ -497,24 +509,6 @@ function requireEncounterState(): EncounterState {
   return encounter;
 }
 
-function slugifyId(value: string): string {
-  const cleaned = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return cleaned.length > 0 ? cleaned : 'actor';
-}
-
-function generateActorId(state: EncounterState, base: string): string {
-  const slug = slugifyId(base);
-  if (!state.actors[slug]) {
-    return slug;
-  }
-
-  let index = 2;
-  while (state.actors[`${slug}-${index}`]) {
-    index += 1;
-  }
-  return `${slug}-${index}`;
-}
-
 function formatDamageExpression(base: string, modifier: number): string {
   if (modifier > 0) {
     return `${base}+${modifier}`;
@@ -562,22 +556,6 @@ function formatDefaultWeapon(profile: WeaponProfile, source: DefaultWeaponSource
 
 function cloneWeaponProfile(profile: WeaponProfile): WeaponProfile {
   return { ...profile };
-}
-
-function cloneMonster(
-  template: Omit<MonsterActor, 'id' | 'side'>,
-  id: string,
-  name: string,
-  side: Side,
-): MonsterActor {
-  return {
-    ...template,
-    id,
-    name,
-    side,
-    abilityMods: { ...template.abilityMods },
-    attacks: template.attacks.map((attack) => cloneWeaponProfile(attack)),
-  };
 }
 
 function formatHitPoints(actor: EncounterActor): string {
@@ -892,21 +870,6 @@ function describeConditionEffects(
   return effects;
 }
 
-function nextMonsterNumber(state: EncounterState, baseName: string): number {
-  const pattern = new RegExp(`^${baseName.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')} #([0-9]+)$`, 'i');
-  let highest = 0;
-  Object.values(state.actors).forEach((actor) => {
-    const match = actor.name.match(pattern);
-    if (match) {
-      const value = Number.parseInt(match[1], 10);
-      if (Number.isFinite(value) && value > highest) {
-        highest = value;
-      }
-    }
-  });
-  return highest + 1;
-}
-
 function applyEncounterDamage(state: EncounterState, actorId: string, amount: number): EncounterState {
   if (!Number.isFinite(amount) || amount <= 0) {
     return state;
@@ -1166,29 +1129,6 @@ function buildPlayerActor(state: EncounterState, name: string, character: Charac
     proficiencyBonus: pb,
     defaultWeapon,
   };
-}
-
-function addMonsters(
-  state: EncounterState,
-  template: Omit<MonsterActor, 'id' | 'side'>,
-  baseName: string,
-  count: number,
-  side: Side = 'foe',
-): { state: EncounterState; added: MonsterActor[] } {
-  const added: MonsterActor[] = [];
-  let nextState = state;
-  let nextNumber = nextMonsterNumber(state, baseName);
-
-  for (let i = 0; i < count; i += 1) {
-    const name = `${baseName} #${nextNumber}`;
-    const id = generateActorId(nextState, name);
-    const actor = cloneMonster(template, id, name, side);
-    nextState = addEncounterActor(nextState, actor);
-    added.push(actor);
-    nextNumber += 1;
-  }
-
-  return { state: nextState, added };
 }
 
 function parseModifier(value: string | undefined): number {
@@ -3004,6 +2944,64 @@ function parseSideOption(value: string | undefined): Side {
     return normalized;
   }
   throw new Error('Invalid side. Expected one of: party, foe, neutral.');
+}
+
+async function handleEncounterBuildCommand(rawArgs: string[]): Promise<void> {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- encounter build "<Spec>" [--side <party|foe|neutral>]');
+    process.exit(1);
+  }
+
+  const specParts: string[] = [];
+  let side: Side = 'foe';
+
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const arg = rawArgs[i];
+    if (!arg) {
+      continue;
+    }
+
+    if (arg.startsWith('--side=')) {
+      side = parseSideOption(arg.slice('--side='.length));
+      continue;
+    }
+
+    if (arg === '--side') {
+      side = parseSideOption(rawArgs[i + 1]);
+      i += 1;
+      continue;
+    }
+
+    specParts.push(arg);
+  }
+
+  const spec = specParts.join(' ').trim();
+  if (!spec) {
+    console.error('Encounter build spec is required.');
+    process.exit(1);
+  }
+
+  const encounter = requireEncounterState();
+  const index = await readCompendiumIndex();
+  const { state, added, missing } = await buildEncounterFromSpec(encounter, spec, side, { index });
+
+  if (missing.length > 0) {
+    for (const name of missing) {
+      console.warn(`Unknown monster: ${name}`);
+    }
+  }
+
+  if (added.length === 0) {
+    console.log('No monsters added.');
+    process.exit(0);
+  }
+
+  saveEncounter(state);
+  console.log(`Built encounter: ${spec}`);
+  for (const actor of added) {
+    await logIfEnabled(`Added ${actor.name} (${actor.side}).`);
+  }
+  process.exit(0);
 }
 
 async function handleEncounterAddSampleMonsterCommand(type: string, rawArgs: string[]): Promise<void> {
@@ -5735,6 +5733,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
     return;
   }
 
+  if (subcommand === 'build') {
+    await handleEncounterBuildCommand(rest);
+    return;
+  }
+
   if (subcommand === 'list') {
     handleEncounterListCommand();
     return;
@@ -5986,6 +5989,59 @@ async function handleMonsterShowCommand(name: string): Promise<void> {
     }
     process.exit(1);
   }
+}
+
+async function handleCompendiumCommand(rawArgs: string[]): Promise<void> {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- compendium <import|stats> ...');
+    process.exit(1);
+  }
+
+  const [subcommand, ...rest] = rawArgs;
+
+  if (subcommand === 'import') {
+    const target = rest[0];
+    if (!target) {
+      console.error('Compendium import path is required.');
+      process.exit(1);
+    }
+    try {
+      const count = await importCompendiumMonsters(target);
+      console.log(`Compendium monsters: ${count} entries.`);
+      process.exit(0);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(`Failed to import monsters: ${error.message}`);
+      } else {
+        console.error('Failed to import monsters.');
+      }
+      process.exit(1);
+    }
+  }
+
+  if (subcommand === 'stats') {
+    const query = rest.join(' ').trim();
+    if (!query) {
+      console.error('Compendium stats query is required.');
+      process.exit(1);
+    }
+
+    const index = await readCompendiumIndex();
+    const template = resolveCompendiumTemplate(index, query);
+    if (!template) {
+      console.log(`Not found: ${query}`);
+      process.exit(0);
+    }
+
+    const summary = summarizeTemplate(template);
+    const acLabel = Number.isFinite(summary.ac) ? summary.ac : '?';
+    const hpLabel = Number.isFinite(summary.hp) ? summary.hp : '?';
+    console.log(`${summary.name} — AC ${acLabel} — HP ${hpLabel}`);
+    process.exit(0);
+  }
+
+  console.error(`Unknown compendium subcommand: ${subcommand}`);
+  process.exit(1);
 }
 
 async function handleMonsterCommand(rawArgs: string[]): Promise<void> {
@@ -6931,6 +6987,11 @@ async function main(): Promise<void> {
 
   if (command === 'settings') {
     await handleSettingsCommand(rest);
+    return;
+  }
+
+  if (command === 'compendium') {
+    await handleCompendiumCommand(rest);
     return;
   }
 
