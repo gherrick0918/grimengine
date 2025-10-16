@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, promises as fs } from 'node:fs';
 import { basename, relative } from 'node:path';
 
 import {
@@ -103,6 +103,7 @@ import {
   type CastResult,
   type Condition,
   type ReminderEvent,
+  resolveLogFile,
 } from '@grimengine/core';
 import { WEAPONS, getWeaponByName } from '@grimengine/rules-srd/weapons';
 import { getArmorByName, SHIELD } from '@grimengine/rules-srd/armor';
@@ -139,6 +140,7 @@ import {
   writeCampaignFile,
 } from './lib/campaigns';
 import { getActorIdByName } from './lib/resolve';
+import { currentCampaignForLogging, logIfEnabled } from './logging';
 
 const SAMPLE_MONSTER_TYPES = {
   goblin: 'Goblin',
@@ -158,6 +160,7 @@ function showUsage(): void {
   );
   console.log('  pnpm dev -- settings get');
   console.log('  pnpm dev -- settings set respect-adv <on|off>');
+  console.log('  pnpm dev -- settings set auto-log <on|off>');
   console.log('  pnpm dev -- abilities roll [--seed <value>] [--count <n>] [--drop <n>] [--sort asc|desc|none]');
   console.log('  pnpm dev -- abilities standard');
   console.log('  pnpm dev -- abilities pointbuy "<comma-separated scores>"');
@@ -198,6 +201,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter start [--seed <value>]');
   console.log('  pnpm dev -- encounter add pc "<name>"');
   console.log('  pnpm dev -- encounter add monster "<name>" [--count <n>]');
+  console.log('  pnpm dev -- session tail [--n <lines>]');
   console.log(
     '  pnpm dev -- encounter add <goblin|bandit|skeleton> [--n <count>] [--name <BaseName>] [--side <party|foe|neutral>]',
   );
@@ -668,7 +672,7 @@ function maybeStartPcConcentration(
   return { state: nextState, caster: casterActor, entry };
 }
 
-function handleHuntersMarkCommand(rawArgs: string[]): void {
+async function handleHuntersMarkCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length === 0) {
     console.error('Usage: pnpm dev -- hm "<TargetName>"');
     process.exit(1);
@@ -728,7 +732,9 @@ function handleHuntersMarkCommand(rawArgs: string[]): void {
   }
 
   saveEncounter(nextState);
-  console.log(`Hunter's Mark applied: ${caster.name} → ${target.name} (concentration started).`);
+  const message = `Hunter's Mark applied: ${caster.name} → ${target.name} (concentration started).`;
+  console.log(message);
+  await logIfEnabled(message);
   process.exit(0);
 }
 
@@ -940,7 +946,7 @@ function applyEncounterHealing(state: EncounterState, actorId: string, amount: n
   return { ...state, actors, defeated };
 }
 
-function handleEncounterDamageCommand(rawArgs: string[]): void {
+async function handleEncounterDamageCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length < 2) {
     console.error('Usage: pnpm dev -- encounter damage "<Name|id>" <amount>');
     process.exit(1);
@@ -974,11 +980,13 @@ function handleEncounterDamageCommand(rawArgs: string[]): void {
   }
 
   saveEncounter(nextEncounter);
-  console.log(`${updatedActor.name} takes ${amount} damage (HP ${formatHitPoints(updatedActor)}).`);
+  const hpLabel = formatHitPoints(updatedActor);
+  console.log(`${updatedActor.name} takes ${amount} damage (HP ${hpLabel}).`);
+  await logIfEnabled(`${updatedActor.name} took ${amount} damage (HP ${hpLabel}).`);
   process.exit(0);
 }
 
-function handleEncounterHealCommand(rawArgs: string[]): void {
+async function handleEncounterHealCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length < 2) {
     console.error('Usage: pnpm dev -- encounter heal "<Name|id>" <amount>');
     process.exit(1);
@@ -1012,11 +1020,13 @@ function handleEncounterHealCommand(rawArgs: string[]): void {
   }
 
   saveEncounter(nextEncounter);
-  console.log(`${updatedActor.name} heals ${amount} HP (HP ${formatHitPoints(updatedActor)}).`);
+  const hpLabel = formatHitPoints(updatedActor);
+  console.log(`${updatedActor.name} heals ${amount} HP (HP ${hpLabel}).`);
+  await logIfEnabled(`${updatedActor.name} healed ${amount} HP (HP ${hpLabel}).`);
   process.exit(0);
 }
 
-function handleDeathCommand(rawArgs: string[]): void {
+async function handleDeathCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length === 0) {
     console.error('Usage: pnpm dev -- death save "<Name|id>"');
     process.exit(1);
@@ -1062,11 +1072,13 @@ function handleDeathCommand(rawArgs: string[]): void {
   const nextEncounter: EncounterState = { ...encounter, actors, defeated };
   saveEncounter(nextEncounter);
 
-  console.log(`${result.line} (roll=${roll})`);
+  const message = `${result.line} (roll=${roll})`;
+  console.log(message);
+  await logIfEnabled(message);
   process.exit(0);
 }
 
-function handleStabilizeCommand(rawArgs: string[]): void {
+async function handleStabilizeCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length === 0) {
     console.error('Usage: pnpm dev -- stabilize "<Name|id>"');
     process.exit(1);
@@ -1109,7 +1121,9 @@ function handleStabilizeCommand(rawArgs: string[]): void {
   const nextEncounter: EncounterState = { ...encounter, actors, defeated };
   saveEncounter(nextEncounter);
 
-  console.log(`${updatedActor.name} is stabilized at 0 HP.`);
+  const message = `${updatedActor.name} is stabilized at 0 HP.`;
+  console.log(message);
+  await logIfEnabled(message);
   process.exit(0);
 }
 
@@ -2873,7 +2887,7 @@ async function handleCharacterCommand(rawArgs: string[]): Promise<void> {
   process.exit(1);
 }
 
-function handleEncounterStartCommand(rawArgs: string[]): void {
+async function handleEncounterStartCommand(rawArgs: string[]): Promise<void> {
   let seed: string | undefined;
 
   for (let i = 0; i < rawArgs.length; i += 1) {
@@ -2898,17 +2912,21 @@ function handleEncounterStartCommand(rawArgs: string[]): void {
   const encounter = createEncounter(seed);
   saveEncounter(encounter);
   const seedLabel = seed ? ` (seed="${seed}")` : '';
-  console.log(`Encounter started${seedLabel}.`);
+  const line = `Encounter started${seedLabel}.`;
+  console.log(line);
+  await logIfEnabled(line);
   process.exit(0);
 }
 
-function handleEncounterAddPcCommand(name: string): void {
+async function handleEncounterAddPcCommand(name: string): Promise<void> {
   const encounter = requireEncounterState();
   const character = requireLoadedCharacter();
   const actor = buildPlayerActor(encounter, name, character);
   const nextState = addEncounterActor(encounter, actor);
   saveEncounter(nextState);
+  const line = `Added ${actor.name} (${actor.side}).`;
   console.log(`Added PC ${actor.name} (id=${actor.id}).`);
+  await logIfEnabled(line);
   process.exit(0);
 }
 
@@ -2971,6 +2989,9 @@ async function handleEncounterAddMonsterCommand(rawArgs: string[]): Promise<void
   const names = added.map((actor) => `${actor.name} (id=${actor.id})`).join(', ');
   const sideLabel = added[0]?.side ?? 'foe';
   console.log(`Added ${added.length} ${template.name}${added.length === 1 ? '' : 's'} on side '${sideLabel}': ${names}`);
+  for (const actor of added) {
+    await logIfEnabled(`Added ${actor.name} (${actor.side}).`);
+  }
   process.exit(0);
 }
 
@@ -2985,7 +3006,7 @@ function parseSideOption(value: string | undefined): Side {
   throw new Error('Invalid side. Expected one of: party, foe, neutral.');
 }
 
-function handleEncounterAddSampleMonsterCommand(type: string, rawArgs: string[]): void {
+async function handleEncounterAddSampleMonsterCommand(type: string, rawArgs: string[]): Promise<void> {
   const key = type.toLowerCase() as keyof typeof SAMPLE_MONSTER_TYPES;
   const templateName = SAMPLE_MONSTER_TYPES[key];
   if (!templateName) {
@@ -3065,6 +3086,9 @@ function handleEncounterAddSampleMonsterCommand(type: string, rawArgs: string[])
   const summaryName = added.length === 1 ? baseName : `${baseName}s`;
   const names = added.map((actor) => `${actor.name} (id=${actor.id})`).join(', ');
   console.log(`Added ${added.length} ${summaryName} on side '${side}': ${names}`);
+  for (const actor of added) {
+    await logIfEnabled(`Added ${actor.name} (${actor.side}).`);
+  }
   process.exit(0);
 }
 
@@ -3081,7 +3105,7 @@ async function handleEncounterAddCommand(rawArgs: string[]): Promise<void> {
       console.error('Missing PC name.');
       process.exit(1);
     }
-    handleEncounterAddPcCommand(name);
+    await handleEncounterAddPcCommand(name);
     return;
   }
 
@@ -3096,7 +3120,7 @@ async function handleEncounterAddCommand(rawArgs: string[]): Promise<void> {
 
   const sampleKey = type.toLowerCase();
   if (sampleKey in SAMPLE_MONSTER_TYPES) {
-    handleEncounterAddSampleMonsterCommand(sampleKey, rest);
+    await handleEncounterAddSampleMonsterCommand(sampleKey, rest);
     return;
   }
 
@@ -3628,7 +3652,7 @@ function handleEncounterConditionTagCommand(rawArgs: string[], condition: Condit
   process.exit(0);
 }
 
-function handleEncounterBlessCommand(rawArgs: string[]): void {
+async function handleEncounterBlessCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length < 2) {
     console.error('Usage: pnpm dev -- encounter bless "<casterIdOrName>" "A,B,C"');
     process.exit(1);
@@ -3720,11 +3744,13 @@ function handleEncounterBlessCommand(rawArgs: string[]): void {
   const entry = encounter.concentration?.[caster.id];
   const appliedTargets = entry?.targetIds ?? resolvedTargets.map((actor) => actor.id);
   const appliedNames = appliedTargets.map((id) => encounter.actors[id]?.name ?? id);
-  console.log(`Bless applied: ${caster.name} → ${appliedNames.join(', ')} (concentration started)`);
+  const message = `Bless applied: ${caster.name} → ${appliedNames.join(', ')} (concentration started)`;
+  console.log(message);
+  await logIfEnabled(`${message}.`);
   process.exit(0);
 }
 
-function handleEncounterGuidanceCommand(rawArgs: string[]): void {
+async function handleEncounterGuidanceCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length < 2) {
     console.error('Usage: pnpm dev -- encounter guidance "<casterIdOrName>" "<targetIdOrName>"');
     process.exit(1);
@@ -3762,11 +3788,13 @@ function handleEncounterGuidanceCommand(rawArgs: string[]): void {
   }
 
   saveEncounter(encounter);
-  console.log(`Guidance applied: ${caster.name} → ${target.name} (concentration started)`);
+  const message = `Guidance applied: ${caster.name} → ${target.name} (concentration started)`;
+  console.log(message);
+  await logIfEnabled(`${message}.`);
   process.exit(0);
 }
 
-function handleEncounterInspireCommand(rawArgs: string[]): void {
+async function handleEncounterInspireCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length < 2) {
     console.error(
       'Usage: pnpm dev -- encounter inspire "<bardIdOrName>" "<targetIdOrName>" [--die d6|d8|d10|d12] [--auto-clear]',
@@ -3855,7 +3883,9 @@ function handleEncounterInspireCommand(rawArgs: string[]): void {
 
   saveEncounter(encounter);
   const suffix = autoClear ? ', auto-clear' : '';
-  console.log(`Bardic Inspiration applied: ${bard.name} → ${target.name} (+${die}${suffix})`);
+  const message = `Bardic Inspiration applied: ${bard.name} → ${target.name} (+${die}${suffix})`;
+  console.log(message);
+  await logIfEnabled(`${message}.`);
   process.exit(0);
 }
 
@@ -3945,7 +3975,7 @@ function handleEncounterInspireClearCommand(rawArgs: string[]): void {
   process.exit(0);
 }
 
-function handleEncounterMarkCommand(rawArgs: string[]): void {
+async function handleEncounterMarkCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length < 2) {
     console.error(
       'Usage: pnpm dev -- encounter mark "<rangerIdOrName>" "<targetIdOrName>" [--note "<detail>"]',
@@ -4019,6 +4049,9 @@ function handleEncounterMarkCommand(rawArgs: string[]): void {
   saveEncounter(encounter);
   console.log(`Started concentration: Hunter's Mark (${caster.name}) → target ${target.name}`);
   console.log(`Added tag to ${target.name}: "Hunter's Mark" [${source}]`);
+  const summary = `Hunter's Mark started: ${caster.name} → ${target.name}`;
+  const noteSuffix = noteText ? ` — ${noteText}` : '';
+  await logIfEnabled(`${summary}${noteSuffix}.`);
   process.exit(0);
 }
 
@@ -4493,7 +4526,7 @@ function handleEncounterInitCommand(rawArgs: string[]): void {
   process.exit(1);
 }
 
-function handleEncounterNextCommand(): void {
+async function handleEncounterNextCommand(): Promise<void> {
   let encounter = requireEncounterState();
   const previousTags = collectActorTags(encounter);
   encounter = encounterNextTurn(encounter);
@@ -4501,11 +4534,11 @@ function handleEncounterNextCommand(): void {
   saveEncounter(encounter);
 
   const actor = encounterCurrentActor(encounter);
-  if (actor) {
-    console.log(`Round ${encounter.round} — ${actor.name}'s turn`);
-  } else {
-    console.log(`Round ${encounter.round} — no active actor`);
-  }
+  const consoleLine = actor
+    ? `Round ${encounter.round} — ${actor.name}'s turn`
+    : `Round ${encounter.round} — no active actor`;
+  console.log(consoleLine);
+  await logIfEnabled(`${consoleLine}.`);
   expired.forEach(({ actorId, tag }) => {
     const name = encounter.actors[actorId]?.name ?? actorId;
     const label = tag.key ?? tag.text ?? tag.id;
@@ -4514,7 +4547,7 @@ function handleEncounterNextCommand(): void {
   process.exit(0);
 }
 
-function handleEncounterPrevCommand(): void {
+async function handleEncounterPrevCommand(): Promise<void> {
   let encounter = requireEncounterState();
   const previousTags = collectActorTags(encounter);
   encounter = encounterPreviousTurn(encounter);
@@ -4522,11 +4555,11 @@ function handleEncounterPrevCommand(): void {
   saveEncounter(encounter);
 
   const actor = encounterCurrentActor(encounter);
-  if (actor) {
-    console.log(`Round ${encounter.round} — ${actor.name}'s turn`);
-  } else {
-    console.log(`Round ${encounter.round} — no active actor`);
-  }
+  const consoleLine = actor
+    ? `Round ${encounter.round} — ${actor.name}'s turn`
+    : `Round ${encounter.round} — no active actor`;
+  console.log(consoleLine);
+  await logIfEnabled(`${consoleLine}.`);
   expired.forEach(({ actorId, tag }) => {
     const name = encounter.actors[actorId]?.name ?? actorId;
     const label = tag.key ?? tag.text ?? tag.id;
@@ -5048,6 +5081,22 @@ async function handleEncounterAttackCommand(rawArgs: string[]): Promise<void> {
     console.log('(Bardic Inspiration consumed.)');
   }
 
+  const acTarget = typeof targetAC === 'number' ? targetAC : defender.ac;
+  const rollLabel = `roll ${result.attack.total}`;
+  let descriptor: string;
+  if (result.attack.isCrit) {
+    descriptor = `critical hit${typeof acTarget === 'number' ? ` vs AC ${acTarget}` : ''}`;
+  } else if (result.attack.hit === true) {
+    descriptor = `hit${typeof acTarget === 'number' ? ` AC ${acTarget}` : ''}`;
+  } else if (result.attack.hit === false) {
+    descriptor = `missed${typeof acTarget === 'number' ? ` vs AC ${acTarget}` : ''}`;
+  } else {
+    descriptor = 'attacked';
+  }
+  const damageInfo = damageApplied > 0 ? ` for ${damageApplied} damage` : '';
+  const attackSummary = `${attacker.name} attacked ${defender.name}: ${descriptor} (${rollLabel})${damageInfo}.`;
+  await logIfEnabled(attackSummary);
+
   process.exit(0);
 }
 
@@ -5186,9 +5235,11 @@ function handleEncounterXpCommand(rawArgs: string[]): void {
   process.exit(0);
 }
 
-function handleEncounterEndCommand(): void {
+async function handleEncounterEndCommand(): Promise<void> {
   clearEncounter();
-  console.log('Encounter ended.');
+  const line = 'Encounter ended.';
+  console.log(line);
+  await logIfEnabled(line);
   process.exit(0);
 }
 
@@ -5223,24 +5274,113 @@ async function handleSettingsCommand(rawArgs: string[]): Promise<void> {
     const normalizedName = settingName.trim().toLowerCase();
     const normalizedValue = valueRaw.trim().toLowerCase();
 
-    if (normalizedName !== 'respect-adv') {
-      console.error(`Unknown setting: ${settingName}`);
-      process.exit(1);
-    }
-
     if (normalizedValue !== 'on' && normalizedValue !== 'off') {
       console.error("Value must be 'on' or 'off'.");
       process.exit(1);
     }
 
+    const boolValue = normalizedValue === 'on';
     const settings = await loadSettings();
-    settings.respectAdv = normalizedValue === 'on';
-    await saveSettings(settings);
-    console.log(`respectAdv = ${settings.respectAdv ? 'ON' : 'OFF'}`);
-    process.exit(0);
+    if (normalizedName === 'respect-adv') {
+      settings.respectAdv = boolValue;
+      await saveSettings(settings);
+      console.log(`respectAdv = ${settings.respectAdv ? 'ON' : 'OFF'}`);
+      process.exit(0);
+    }
+
+    if (normalizedName === 'auto-log') {
+      settings.autoLog = boolValue;
+      await saveSettings(settings);
+      console.log(`autoLog = ${settings.autoLog ? 'ON' : 'OFF'}`);
+      process.exit(0);
+    }
+
+    console.error(`Unknown setting: ${settingName}`);
+    process.exit(1);
   }
 
   console.error(`Unknown settings subcommand: ${subcommand}`);
+  process.exit(1);
+}
+
+async function handleSessionCommand(rawArgs: string[]): Promise<void> {
+  if (rawArgs.length === 0) {
+    console.error('Missing session subcommand.');
+    process.exit(1);
+  }
+
+  const [subcommand, ...rest] = rawArgs;
+
+  if (subcommand === 'tail') {
+    let count = 20;
+
+    for (let i = 0; i < rest.length; i += 1) {
+      const arg = rest[i];
+      if (!arg) {
+        continue;
+      }
+
+      if (arg.startsWith('--n=')) {
+        const value = Number.parseInt(arg.slice('--n='.length), 10);
+        if (!Number.isFinite(value) || value <= 0) {
+          console.error('--n must be a positive integer.');
+          process.exit(1);
+        }
+        count = value;
+        continue;
+      }
+
+      if (arg === '--n') {
+        const next = rest[i + 1];
+        if (next === undefined) {
+          console.error('Expected value after --n.');
+          process.exit(1);
+        }
+        const value = Number.parseInt(next, 10);
+        if (!Number.isFinite(value) || value <= 0) {
+          console.error('--n must be a positive integer.');
+          process.exit(1);
+        }
+        count = value;
+        i += 1;
+        continue;
+      }
+
+      console.warn(`Ignoring unknown argument: ${arg}`);
+    }
+
+    try {
+      const campaign = await currentCampaignForLogging();
+      const { file } = await resolveLogFile(campaign);
+      const contents = await fs.readFile(file, 'utf-8').catch((error: unknown) => {
+        const maybeErrno = error as NodeJS.ErrnoException;
+        if (maybeErrno?.code === 'ENOENT') {
+          return '';
+        }
+        throw error;
+      });
+
+      const trimmed = contents.trim();
+      if (trimmed.length === 0) {
+        process.exit(0);
+      }
+
+      const lines = trimmed.split(/\r?\n/);
+      const tail = lines.slice(-count);
+      tail.forEach((line) => console.log(line));
+      process.exit(0);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(error.message);
+      } else {
+        console.error('Failed to read session log.');
+      }
+      process.exit(1);
+    }
+    return;
+  }
+
+  console.error(`Unknown session subcommand: ${subcommand}`);
   process.exit(1);
 }
 
@@ -5579,7 +5719,7 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   const [subcommand, ...rest] = rawArgs;
 
   if (subcommand === 'start') {
-    handleEncounterStartCommand(rest);
+    await handleEncounterStartCommand(rest);
     return;
   }
 
@@ -5624,12 +5764,12 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   }
 
   if (subcommand === 'damage') {
-    handleEncounterDamageCommand(rest);
+    await handleEncounterDamageCommand(rest);
     return;
   }
 
   if (subcommand === 'heal') {
-    handleEncounterHealCommand(rest);
+    await handleEncounterHealCommand(rest);
     return;
   }
 
@@ -5639,12 +5779,12 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   }
 
   if (subcommand === 'next') {
-    handleEncounterNextCommand();
+    await handleEncounterNextCommand();
     return;
   }
 
   if (subcommand === 'prev') {
-    handleEncounterPrevCommand();
+    await handleEncounterPrevCommand();
     return;
   }
 
@@ -5664,12 +5804,12 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   }
 
   if (subcommand === 'bless') {
-    handleEncounterBlessCommand(rest);
+    await handleEncounterBlessCommand(rest);
     return;
   }
 
   if (subcommand === 'guidance') {
-    handleEncounterGuidanceCommand(rest);
+    await handleEncounterGuidanceCommand(rest);
     return;
   }
 
@@ -5677,7 +5817,7 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
     if (rest[0] && rest[0].toLowerCase() === 'use') {
       handleEncounterInspireUseCommand(rest.slice(1));
     } else {
-      handleEncounterInspireCommand(rest);
+      await handleEncounterInspireCommand(rest);
     }
     return;
   }
@@ -5688,7 +5828,7 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   }
 
   if (subcommand === 'mark') {
-    handleEncounterMarkCommand(rest);
+    await handleEncounterMarkCommand(rest);
     return;
   }
 
@@ -5766,7 +5906,7 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   }
 
   if (subcommand === 'end') {
-    handleEncounterEndCommand();
+    await handleEncounterEndCommand();
     return;
   }
 
@@ -6763,17 +6903,22 @@ async function main(): Promise<void> {
   }
 
   if (command === 'death') {
-    handleDeathCommand(rest);
+    await handleDeathCommand(rest);
     return;
   }
 
   if (command === 'stabilize') {
-    handleStabilizeCommand(rest);
+    await handleStabilizeCommand(rest);
     return;
   }
 
   if (command === 'encounter') {
     await handleEncounterCommand(rest);
+    return;
+  }
+
+  if (command === 'session') {
+    await handleSessionCommand(rest);
     return;
   }
 
@@ -6793,7 +6938,7 @@ async function main(): Promise<void> {
   }
 
   if (command === 'hm' || command === 'hunters-mark') {
-    handleHuntersMarkCommand(rest);
+    await handleHuntersMarkCommand(rest);
     return;
   }
 

@@ -1,4 +1,5 @@
 export { roll } from './dice.js';
+export * from './log.js';
 export type { RollOptions, RollResult } from './dice.js';
 export {
   roll4d6DropLowest,

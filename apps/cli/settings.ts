@@ -5,6 +5,7 @@ const SETTINGS_FILE = path.join(process.cwd(), '.data', 'settings.json');
 
 export interface Settings {
   respectAdv?: boolean;
+  autoLog?: boolean;
 }
 
 export async function loadSettings(): Promise<Settings> {
