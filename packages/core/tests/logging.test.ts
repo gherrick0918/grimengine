@@ -26,7 +26,8 @@ describe('logging helpers', () => {
     const { file } = await resolveLogFile();
     const contents = await fs.readFile(file, 'utf-8');
     expect(contents.trim().endsWith('opened the door')).toBe(true);
-    expect(path.relative(tempDir, file)).toMatch(/\.data\/session-\d{4}-\d{2}-\d{2}\.md$/);
+    const rel = path.relative(tempDir, file).split(path.sep).join('/');
+    expect(rel).toMatch(/\.data\/session-\d{4}-\d{2}-\d{2}\.md$/);
   });
 
   test('appendLog uses campaign-specific log file', async () => {
@@ -34,7 +35,8 @@ describe('logging helpers', () => {
     const { file } = await resolveLogFile({ name: 'greenway' });
     const contents = await fs.readFile(file, 'utf-8');
     expect(contents.trim().endsWith('met the merchant')).toBe(true);
-    expect(path.relative(tempDir, file)).toMatch(/\.data\/campaigns\/greenway-session-\d{4}-\d{2}-\d{2}\.md$/);
+    const rel2 = path.relative(tempDir, file).split(path.sep).join('/');
+    expect(rel2).toMatch(/\.data\/campaigns\/greenway-session-\d{4}-\d{2}-\d{2}\.md$/);
   });
 
   test('appendLog preserves chronological order for tailing', async () => {
