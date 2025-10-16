@@ -143,3 +143,13 @@ export { remindersFor } from './reminders.js';
 export type { ReminderEvent } from './reminders.js';
 export { computeAdvantageState } from './advantage.js';
 export type { AdvantageState, AttackMode } from './advantage.js';
+export {
+  applyDamage,
+  applyHealing,
+  clearDeath,
+  getDeath,
+  getCurrentHp,
+  getMaxHp,
+  rollDeathSave,
+} from './death.js';
+export type { DeathState } from './death.js';

@@ -1,4 +1,5 @@
 import type { Actor, ActorTag, EncounterState, Side, ConcentrationEntry } from './encounter.js';
+import { applyHealing as applyDeathHealing, clearDeath, getCurrentHp } from './death.js';
 
 type RestTarget = Side | string;
 
@@ -80,7 +81,7 @@ function selectTargets(state: EncounterState, who: RestTarget): Array<{ id: stri
 }
 
 function formatLine(actor: Actor): string {
-  return `${actor.name} → HP ${actor.hp}/${actor.maxHp}`;
+  return `${actor.name} → HP ${getCurrentHp(actor)}/${actor.maxHp}`;
 }
 
 function shouldRemoveTag(tag: ActorTag): boolean {
@@ -178,10 +179,13 @@ export function shortRest(state: EncounterState, options: ShortRestOptions = {})
       const healPerDie = avgDie(defaultDie) + conMod(actor);
       const totalHeal = Math.max(0, healPerDie * hitDice);
       if (totalHeal > 0) {
-        const nextHp = Math.min(actor.maxHp, actor.hp + totalHeal);
-        if (nextHp !== actor.hp) {
+        const candidate: Actor = { ...actor };
+        applyDeathHealing(candidate, totalHeal);
+        const nextHp = getCurrentHp(candidate);
+        const deathChanged = candidate.death !== actor.death;
+        if (nextHp !== actor.hp || deathChanged) {
           const actors = ensureActorsCopy();
-          updated = { ...actor, hp: nextHp };
+          updated = candidate;
           actors[id] = updated;
           if (nextHp > 0 && state.defeated.has(id)) {
             ensureDefeatedCopy().delete(id);
@@ -240,6 +244,8 @@ export function longRest(state: EncounterState, options: LongRestOptions = {}): 
       actor.conditions !== nextConditions ||
       actor.tags !== nextTags;
 
+    let actorChanged = false;
+
     if (needsUpdate) {
       const actors = ensureActorsCopy();
       updated = {
@@ -249,6 +255,21 @@ export function longRest(state: EncounterState, options: LongRestOptions = {}): 
         tags: nextTags,
       };
       actors[id] = updated;
+      actorChanged = true;
+    }
+
+    if (!actorChanged && actor.death) {
+      const actors = ensureActorsCopy();
+      updated = { ...actor };
+      actors[id] = updated;
+      actorChanged = true;
+    }
+
+    if (actorChanged) {
+      updated.hp = nextHp;
+      updated.conditions = nextConditions;
+      updated.tags = nextTags;
+      clearDeath(updated);
     }
 
     if (state.defeated.has(id)) {
