@@ -1,5 +1,6 @@
 import type { AbilityName } from './abilityScores.js';
 import type { Condition, ConditionSet } from './conditions.js';
+import type { DeathState } from './death.js';
 import {
   addCondition,
   attackAdvFromConditions,
@@ -12,6 +13,7 @@ import type { ResolveAttackResult } from './combat.js';
 import { resolveAttack } from './combat.js';
 import { roll } from './dice.js';
 import type { CoinBundle } from './loot.js';
+import { applyDamage as applyDeathDamage, getCurrentHp } from './death.js';
 
 export type Side = 'party' | 'foe' | 'neutral';
 
@@ -44,6 +46,7 @@ export interface ActorBase {
   proficiencyBonus?: number;
   conditions?: ConditionSet;
   tags?: ActorTag[];
+  death?: DeathState;
 }
 
 export interface WeaponProfile {
@@ -651,8 +654,13 @@ function applyDamage(state: EncounterState, defenderId: string, amount: number):
   if (!defender) {
     return state;
   }
-  const nextHp = Math.max(0, defender.hp - amount);
-  const updatedDefender: Actor = { ...defender, hp: nextHp };
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return state;
+  }
+
+  const updatedDefender: Actor = { ...defender };
+  applyDeathDamage(updatedDefender, amount);
+  const nextHp = getCurrentHp(updatedDefender);
   const actors = { ...state.actors, [defenderId]: updatedDefender };
   const defeated = cloneDefeated(state.defeated);
   if (nextHp === 0) {

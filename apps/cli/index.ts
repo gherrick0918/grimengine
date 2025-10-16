@@ -78,6 +78,11 @@ import {
   concentrationReminderLinesForDamage,
   rollCoinsForCR,
   totalXP,
+  applyDamage,
+  applyHealing,
+  getDeath,
+  getCurrentHp,
+  rollDeathSave,
   type EncounterState,
   type Actor as EncounterActor,
   type ConcentrationEntry,
@@ -196,6 +201,8 @@ function showUsage(): void {
   console.log(
     '  pnpm dev -- encounter add <goblin|bandit|skeleton> [--n <count>] [--name <BaseName>] [--side <party|foe|neutral>]',
   );
+  console.log('  pnpm dev -- encounter damage "<Name>" <amount>');
+  console.log('  pnpm dev -- encounter heal "<Name>" <amount>');
   console.log('  pnpm dev -- encounter adv "<Name>" <on|off>');
   console.log('  pnpm dev -- encounter dis "<Name>" <on|off>');
   console.log('  pnpm dev -- encounter list');
@@ -215,6 +222,8 @@ function showUsage(): void {
     '  pnpm dev -- encounter check "<actorIdOrName>" <ABILITY> [--dc <n>] [--skill "<SkillName>"] [--adv|--dis] [--seed <value>]',
   );
   console.log('  pnpm dev -- encounter attack "<attacker>" "<defender>" [--mode melee|ranged] [--adv|--dis] [--twohanded] [--respect-adv] [--seed <value>]');
+  console.log('  pnpm dev -- death save "<Name>"');
+  console.log('  pnpm dev -- stabilize "<Name>"');
   console.log('  pnpm dev -- encounter concentration start "<casterIdOrName>" "<Spell Name>" [--target "<id|name>"]');
   console.log('  pnpm dev -- encounter concentration end "<casterIdOrName>"');
   console.log('  pnpm dev -- encounter concentration check "<casterIdOrName>" <damage> [--seed <value>]');
@@ -568,7 +577,30 @@ function cloneMonster(
 }
 
 function formatHitPoints(actor: EncounterActor): string {
-  return `${actor.hp}/${actor.maxHp}`;
+  const current = getCurrentHp(actor);
+  const base = `${current}/${actor.maxHp}`;
+  if (current > 0) {
+    return base;
+  }
+
+  const death = actor.death;
+  if (!death) {
+    return base;
+  }
+  if (death.dead) {
+    return `${base} (DEAD)`;
+  }
+  if (death.stable) {
+    return `${base} (stable)`;
+  }
+  return `${base} (S:${death.successes} F:${death.failures})`;
+}
+
+function cloneEncounterActor(actor: EncounterActor): EncounterActor {
+  if (actor.death) {
+    return { ...actor, death: { ...actor.death } };
+  }
+  return { ...actor };
 }
 
 function findActorByIdentifier(state: EncounterState, identifier: string): EncounterActor {
@@ -870,15 +902,16 @@ function nextMonsterNumber(state: EncounterState, baseName: string): number {
 }
 
 function applyEncounterDamage(state: EncounterState, actorId: string, amount: number): EncounterState {
-  if (amount <= 0) {
+  if (!Number.isFinite(amount) || amount <= 0) {
     return state;
   }
   const actor = state.actors[actorId];
   if (!actor) {
     return state;
   }
-  const nextHp = Math.max(0, actor.hp - amount);
-  const updated: EncounterActor = { ...actor, hp: nextHp };
+  const updated: EncounterActor = cloneEncounterActor(actor);
+  applyDamage(updated, amount);
+  const nextHp = getCurrentHp(updated);
   const actors = { ...state.actors, [actorId]: updated };
   const defeated = new Set(state.defeated);
   if (nextHp === 0) {
@@ -887,6 +920,197 @@ function applyEncounterDamage(state: EncounterState, actorId: string, amount: nu
     defeated.delete(actorId);
   }
   return { ...state, actors, defeated };
+}
+
+function applyEncounterHealing(state: EncounterState, actorId: string, amount: number): EncounterState {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return state;
+  }
+  const actor = state.actors[actorId];
+  if (!actor) {
+    return state;
+  }
+  const updated: EncounterActor = cloneEncounterActor(actor);
+  applyHealing(updated, amount);
+  const actors = { ...state.actors, [actorId]: updated };
+  const defeated = new Set(state.defeated);
+  if (getCurrentHp(updated) > 0) {
+    defeated.delete(actorId);
+  }
+  return { ...state, actors, defeated };
+}
+
+function handleEncounterDamageCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error('Usage: pnpm dev -- encounter damage "<Name|id>" <amount>');
+    process.exit(1);
+  }
+
+  const [identifier, amountRaw] = rawArgs;
+  const amount = Number.parseInt(amountRaw ?? '', 10);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    console.error('Damage amount must be a positive integer.');
+    process.exit(1);
+  }
+
+  const encounter = requireEncounterState();
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, identifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const nextEncounter = applyEncounterDamage(encounter, actor.id, amount);
+  const updatedActor = nextEncounter.actors[actor.id];
+  if (!updatedActor) {
+    console.error('Failed to update actor after applying damage.');
+    process.exit(1);
+    return;
+  }
+
+  saveEncounter(nextEncounter);
+  console.log(`${updatedActor.name} takes ${amount} damage (HP ${formatHitPoints(updatedActor)}).`);
+  process.exit(0);
+}
+
+function handleEncounterHealCommand(rawArgs: string[]): void {
+  if (rawArgs.length < 2) {
+    console.error('Usage: pnpm dev -- encounter heal "<Name|id>" <amount>');
+    process.exit(1);
+  }
+
+  const [identifier, amountRaw] = rawArgs;
+  const amount = Number.parseInt(amountRaw ?? '', 10);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    console.error('Healing amount must be a positive integer.');
+    process.exit(1);
+  }
+
+  const encounter = requireEncounterState();
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, identifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const nextEncounter = applyEncounterHealing(encounter, actor.id, amount);
+  const updatedActor = nextEncounter.actors[actor.id];
+  if (!updatedActor) {
+    console.error('Failed to update actor after applying healing.');
+    process.exit(1);
+    return;
+  }
+
+  saveEncounter(nextEncounter);
+  console.log(`${updatedActor.name} heals ${amount} HP (HP ${formatHitPoints(updatedActor)}).`);
+  process.exit(0);
+}
+
+function handleDeathCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- death save "<Name|id>"');
+    process.exit(1);
+  }
+
+  const [subcommand, ...rest] = rawArgs;
+  if (!subcommand || subcommand.toLowerCase() !== 'save') {
+    console.error('Usage: pnpm dev -- death save "<Name|id>"');
+    process.exit(1);
+  }
+
+  const identifier = rest.join(' ').trim();
+  if (!identifier) {
+    console.error('Target name or id is required for death save.');
+    process.exit(1);
+  }
+
+  const encounter = requireEncounterState();
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, identifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const updatedActor = cloneEncounterActor(actor);
+  const roll = Math.floor(Math.random() * 20) + 1;
+  const result = rollDeathSave(updatedActor, roll);
+
+  const actors = { ...encounter.actors, [actor.id]: updatedActor };
+  const defeated = new Set(encounter.defeated);
+  const currentHp = getCurrentHp(updatedActor);
+  if (currentHp > 0) {
+    defeated.delete(actor.id);
+  } else {
+    defeated.add(actor.id);
+  }
+
+  const nextEncounter: EncounterState = { ...encounter, actors, defeated };
+  saveEncounter(nextEncounter);
+
+  console.log(`${result.line} (roll=${roll})`);
+  process.exit(0);
+}
+
+function handleStabilizeCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- stabilize "<Name|id>"');
+    process.exit(1);
+  }
+
+  const identifier = rawArgs.join(' ').trim();
+  if (!identifier) {
+    console.error('Target name or id is required to stabilize.');
+    process.exit(1);
+  }
+
+  const encounter = requireEncounterState();
+  let actor: EncounterActor;
+  try {
+    actor = findActorByIdentifier(encounter, identifier);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const updatedActor = cloneEncounterActor(actor);
+  const currentHp = getCurrentHp(updatedActor);
+  if (currentHp > 0) {
+    applyDamage(updatedActor, currentHp);
+  }
+
+  const death = getDeath(updatedActor);
+  death.successes = 3;
+  death.failures = 0;
+  death.dead = false;
+  death.stable = true;
+
+  const actors = { ...encounter.actors, [actor.id]: updatedActor };
+  const defeated = new Set(encounter.defeated);
+  defeated.add(actor.id);
+
+  const nextEncounter: EncounterState = { ...encounter, actors, defeated };
+  saveEncounter(nextEncounter);
+
+  console.log(`${updatedActor.name} is stabilized at 0 HP.`);
+  process.exit(0);
 }
 
 function formatActorLine(state: EncounterState, actor: EncounterActor, currentId: string | undefined): string {
@@ -5399,6 +5623,16 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
     return;
   }
 
+  if (subcommand === 'damage') {
+    handleEncounterDamageCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'heal') {
+    handleEncounterHealCommand(rest);
+    return;
+  }
+
   if (subcommand === 'init') {
     handleEncounterInitCommand(rest);
     return;
@@ -6525,6 +6759,16 @@ async function main(): Promise<void> {
 
   if (command === 'campaign') {
     await handleCampaignCommand(rest);
+    return;
+  }
+
+  if (command === 'death') {
+    handleDeathCommand(rest);
+    return;
+  }
+
+  if (command === 'stabilize') {
+    handleStabilizeCommand(rest);
     return;
   }
 
