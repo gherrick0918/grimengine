@@ -85,10 +85,15 @@ export async function guessCurrentCampaignFile(): Promise<string | null> {
   }
 }
 
-export async function createCampaign(rawName: string): Promise<{
+export async function createCampaign(
+  rawName: string,
+  options: { force?: boolean } = {},
+): Promise<{
   slug: string;
   filePath: string;
   campaign: CampaignData;
+  created: boolean;
+  overwritten: boolean;
 }> {
   const slug = toSlug(rawName);
   if (!slug) {
@@ -97,15 +102,6 @@ export async function createCampaign(rawName: string): Promise<{
 
   await ensureDataDirs();
   const filePath = campaignFilePath(slug);
-
-  try {
-    await fs.access(filePath);
-    throw new Error(`Campaign "${slug}" already exists.`);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw error;
-    }
-  }
 
   const notesFileAbsolute = join(CAMPAIGN_DIR, `${slug}-notes.md`);
   const notesFile = relative(process.cwd(), notesFileAbsolute);
@@ -116,8 +112,25 @@ export async function createCampaign(rawName: string): Promise<{
     notesFile,
   };
 
-  await fs.writeFile(filePath, JSON.stringify(campaign, null, 2), 'utf-8');
+  let existed = false;
+  try {
+    await fs.access(filePath);
+    existed = true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
   await fs.mkdir(dirname(notesFileAbsolute), { recursive: true });
+
+  if (existed && !options.force) {
+    const existingCampaign = await readCampaignFile(filePath);
+    await rememberCurrentCampaign(filePath);
+    return { slug, filePath, campaign: existingCampaign, created: false, overwritten: false };
+  }
+
+  await fs.writeFile(filePath, JSON.stringify(campaign, null, 2), 'utf-8');
   try {
     await fs.access(notesFileAbsolute);
   } catch {
@@ -126,7 +139,7 @@ export async function createCampaign(rawName: string): Promise<{
 
   await rememberCurrentCampaign(filePath);
 
-  return { slug, filePath, campaign };
+  return { slug, filePath, campaign, created: true, overwritten: existed };
 }
 
 export async function loadCampaignByName(rawName: string): Promise<{

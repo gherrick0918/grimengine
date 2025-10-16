@@ -5485,15 +5485,22 @@ async function handleCampaignCommand(rawArgs: string[]): Promise<void> {
   const [subcommand, ...rest] = rawArgs;
 
   if (subcommand === 'new') {
-    const name = rest.join(' ').trim();
+    const force = rest.includes('--force');
+    const name = rest.filter((part) => part !== '--force').join(' ').trim();
     if (!name) {
       console.error('Campaign name is required.');
       process.exit(1);
     }
 
     try {
-      const { slug } = await createCampaign(name);
-      console.log(`Campaign created: ${slug}`);
+      const { slug, created, overwritten } = await createCampaign(name, { force });
+      if (!created) {
+        console.log(`Campaign "${slug}" already exists.`);
+      } else if (overwritten) {
+        console.log(`Campaign overwritten: ${slug}`);
+      } else {
+        console.log(`Campaign created: ${slug}`);
+      }
       process.exit(0);
     } catch (error) {
       if (error instanceof Error) {
