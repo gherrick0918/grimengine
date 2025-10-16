@@ -54,6 +54,8 @@ import {
   removeActorTag as encounterRemoveActorTag,
   clearActorTags as encounterClearActorTags,
   clearAllConcentration,
+  shortRest as encounterShortRest,
+  longRest as encounterLongRest,
   combineAdvantage,
   attackAdvFromConditions,
   computeAdvantageState,
@@ -189,6 +191,8 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter ls');
   console.log('  pnpm dev -- encounter load "<name>"');
   console.log('  pnpm dev -- encounter delete "<name>"');
+  console.log('  pnpm dev -- encounter rest long [--who <Name|party|foe|neutral>]');
+  console.log('  pnpm dev -- encounter rest short [--who <Name|party|foe|neutral>] [--hd <n>]');
   console.log('  pnpm dev -- encounter init roll');
   console.log('  pnpm dev -- encounter init set "<Name>" <Score>');
   console.log('  pnpm dev -- encounter init show');
@@ -5004,6 +5008,98 @@ async function handleSettingsCommand(rawArgs: string[]): Promise<void> {
   process.exit(1);
 }
 
+function handleEncounterRestCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error('Usage: pnpm dev -- encounter rest <long|short> [options]');
+    process.exit(1);
+  }
+
+  const [restTypeRaw, ...optionArgs] = rawArgs;
+  const restType = restTypeRaw?.toLowerCase();
+
+  let who = 'party';
+  let hitDice = 0;
+  const unknownArgs: string[] = [];
+
+  const parseValue = (label: string, value: string | undefined): string => {
+    if (value === undefined) {
+      console.error(`Expected value after ${label}.`);
+      process.exit(1);
+    }
+    return value;
+  };
+
+  const parseHitDice = (label: string, value: string | undefined): number => {
+    const parsed = Number.parseInt(parseValue(label, value).trim(), 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      console.error('--hd must be a non-negative integer.');
+      process.exit(1);
+    }
+    return parsed;
+  };
+
+  for (let i = 0; i < optionArgs.length; i += 1) {
+    const arg = optionArgs[i];
+    if (!arg) {
+      continue;
+    }
+
+    const lower = arg.toLowerCase();
+    if (lower.startsWith('--who=')) {
+      who = arg.slice('--who='.length).trim();
+      continue;
+    }
+    if (lower === '--who') {
+      who = parseValue('--who', optionArgs[i + 1]).trim();
+      i += 1;
+      continue;
+    }
+    if (lower.startsWith('--hd=')) {
+      hitDice = parseHitDice('--hd', arg.slice('--hd='.length));
+      continue;
+    }
+    if (lower === '--hd') {
+      hitDice = parseHitDice('--hd', optionArgs[i + 1]);
+      i += 1;
+      continue;
+    }
+
+    unknownArgs.push(arg);
+  }
+
+  if (unknownArgs.length > 0) {
+    console.warn(`Ignoring extra argument(s): ${unknownArgs.join(', ')}`);
+  }
+
+  const encounter = requireEncounterState();
+
+  try {
+    if (restType === 'long') {
+      const result = encounterLongRest(encounter, { who });
+      saveEncounter(result.state);
+      result.lines.forEach((line) => console.log(line));
+      process.exit(0);
+    }
+
+    if (restType === 'short') {
+      const result = encounterShortRest(encounter, { who, hitDice });
+      saveEncounter(result.state);
+      result.lines.forEach((line) => console.log(line));
+      process.exit(0);
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error(String(error));
+    }
+    process.exit(1);
+  }
+
+  console.error(`Unknown rest type: ${restTypeRaw}`);
+  process.exit(1);
+}
+
 async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length === 0) {
     console.error('Missing encounter subcommand.');
@@ -5050,6 +5146,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'delete') {
     handleEncounterDeleteCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'rest') {
+    handleEncounterRestCommand(rest);
     return;
   }
 
