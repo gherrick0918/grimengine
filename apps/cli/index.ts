@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { relative } from 'node:path';
+import { basename, relative } from 'node:path';
 
 import {
   abilityCheck,
@@ -121,6 +121,18 @@ import { deleteEncounterByName, listEncounterSaves, loadEncounterByName, saveEnc
 import { clearCharacter, loadCharacter, saveCharacter } from './session';
 import { loadSettings, saveSettings } from './settings';
 import { listVaultNames, loadFromVault, saveToVault } from './char-vault';
+import {
+  appendCampaignNote,
+  createCampaign,
+  formatCampaignParty,
+  guessCurrentCampaignFile,
+  loadCampaignByName,
+  readCampaignFile,
+  relativeSnapshotPath,
+  resolveSnapshotAbsolutePath,
+  snapshotLabel,
+  writeCampaignFile,
+} from './lib/campaigns';
 import { getActorIdByName } from './lib/resolve';
 
 const SAMPLE_MONSTER_TYPES = {
@@ -5100,6 +5112,239 @@ function handleEncounterRestCommand(rawArgs: string[]): void {
   process.exit(1);
 }
 
+async function handleCampaignCommand(rawArgs: string[]): Promise<void> {
+  if (rawArgs.length === 0) {
+    console.error('Missing campaign subcommand.');
+    process.exit(1);
+  }
+
+  const [subcommand, ...rest] = rawArgs;
+
+  if (subcommand === 'new') {
+    const name = rest.join(' ').trim();
+    if (!name) {
+      console.error('Campaign name is required.');
+      process.exit(1);
+    }
+
+    try {
+      const { slug } = await createCampaign(name);
+      console.log(`Campaign created: ${slug}`);
+      process.exit(0);
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(error.message);
+      } else {
+        console.error('Failed to create campaign.');
+      }
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (subcommand === 'open') {
+    const name = rest.join(' ').trim();
+    if (!name) {
+      console.error('Campaign name is required to open.');
+      process.exit(1);
+    }
+
+    try {
+      const { campaign } = await loadCampaignByName(name);
+      console.log(`Campaign opened: ${campaign.name} — party: ${formatCampaignParty(campaign.party)}`);
+
+      if (campaign.currentSnapshot) {
+        const absoluteSnapshot = resolveSnapshotAbsolutePath(campaign.currentSnapshot);
+        const snapshotName = basename(absoluteSnapshot).replace(/\.json$/i, '');
+        const encounter = loadEncounterByName(snapshotName);
+        if (encounter) {
+          saveEncounter(encounter);
+          console.log('Encounter restored from snapshot.');
+        } else {
+          console.warn('Snapshot not found; encounter not restored.');
+        }
+      }
+
+      process.exit(0);
+    } catch (error) {
+      const maybeErrno = error as NodeJS.ErrnoException;
+      if (maybeErrno?.code === 'ENOENT') {
+        console.error(`Campaign not found: ${name}`);
+      } else if (error instanceof Error) {
+        console.error(error.message);
+      } else {
+        console.error('Failed to open campaign.');
+      }
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (subcommand === 'save') {
+    const encounter = loadEncounter();
+    if (!encounter) {
+      console.log('No active encounter');
+      process.exit(0);
+    }
+
+    const filePath = saveEncounterAs('autosave', encounter);
+    const snapshotRelative = relativeSnapshotPath(filePath);
+    const campaignFile = await guessCurrentCampaignFile();
+    if (!campaignFile) {
+      console.log('No campaign open; snapshot written only.');
+      console.log(`Snapshot path: ${snapshotRelative}`);
+      process.exit(0);
+    }
+
+    try {
+      const campaign = await readCampaignFile(campaignFile);
+      campaign.currentSnapshot = snapshotRelative;
+      await writeCampaignFile(campaignFile, campaign);
+      console.log(`Campaign saved. Snapshot → ${snapshotRelative}`);
+      process.exit(0);
+    } catch (error) {
+      const maybeErrno = error as NodeJS.ErrnoException;
+      if (maybeErrno?.code === 'ENOENT') {
+        console.error('Campaign file not found.');
+      } else if (error instanceof Error) {
+        console.error(error.message);
+      } else {
+        console.error('Failed to update campaign with snapshot.');
+      }
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (subcommand === 'note') {
+    const text = rest.join(' ').trim();
+    if (!text) {
+      console.error('Note text is required.');
+      process.exit(1);
+    }
+
+    const campaignFile = await guessCurrentCampaignFile();
+    if (!campaignFile) {
+      console.error('No campaign open');
+      process.exit(1);
+    }
+
+    try {
+      const campaign = await readCampaignFile(campaignFile);
+      await appendCampaignNote(campaign, text);
+      console.log('Note appended.');
+      process.exit(0);
+    } catch (error) {
+      const maybeErrno = error as NodeJS.ErrnoException;
+      if (maybeErrno?.code === 'ENOENT') {
+        console.error('Campaign file not found.');
+      } else if (error instanceof Error) {
+        console.error(error.message);
+      } else {
+        console.error('Failed to append note.');
+      }
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (subcommand === 'party') {
+    if (rest.length === 0) {
+      console.error('Missing party subcommand.');
+      process.exit(1);
+    }
+
+    const [partyAction, ...nameParts] = rest;
+    const memberName = nameParts.join(' ').trim();
+
+    if ((partyAction === 'add' || partyAction === 'remove') && !memberName) {
+      console.error('Party member name is required.');
+      process.exit(1);
+    }
+
+    const campaignFile = await guessCurrentCampaignFile();
+    if (!campaignFile) {
+      console.error('No campaign open');
+      process.exit(1);
+    }
+
+    try {
+      const campaign = await readCampaignFile(campaignFile);
+
+      if (partyAction === 'add') {
+        if (!campaign.party.includes(memberName)) {
+          campaign.party = [...campaign.party, memberName];
+          await writeCampaignFile(campaignFile, campaign);
+        }
+        console.log(`Party updated: ${formatCampaignParty(campaign.party)}`);
+        process.exit(0);
+        return;
+      }
+
+      if (partyAction === 'remove') {
+        const nextParty = campaign.party.filter((member) => member !== memberName);
+        if (nextParty.length !== campaign.party.length) {
+          campaign.party = nextParty;
+          await writeCampaignFile(campaignFile, campaign);
+        }
+        console.log(`Party updated: ${formatCampaignParty(campaign.party)}`);
+        process.exit(0);
+        return;
+      }
+
+      console.error(`Unknown party subcommand: ${partyAction}`);
+      process.exit(1);
+      return;
+    } catch (error) {
+      const maybeErrno = error as NodeJS.ErrnoException;
+      if (maybeErrno?.code === 'ENOENT') {
+        console.error('Campaign file not found.');
+      } else if (error instanceof Error) {
+        console.error(error.message);
+      } else {
+        console.error('Failed to update party.');
+      }
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (subcommand === 'status') {
+    const campaignFile = await guessCurrentCampaignFile();
+    if (!campaignFile) {
+      console.log('No campaign open.');
+      process.exit(0);
+    }
+
+    try {
+      const campaign = await readCampaignFile(campaignFile);
+      const summary = {
+        file: relative(process.cwd(), campaignFile),
+        name: campaign.name,
+        party: campaign.party,
+        currentSnapshot: snapshotLabel(campaign.currentSnapshot),
+        notesFile: relativeSnapshotPath(campaign.notesFile),
+      };
+      console.log(JSON.stringify(summary, null, 2));
+      process.exit(0);
+    } catch (error) {
+      const maybeErrno = error as NodeJS.ErrnoException;
+      if (maybeErrno?.code === 'ENOENT') {
+        console.error('Campaign file not found.');
+      } else if (error instanceof Error) {
+        console.error(error.message);
+      } else {
+        console.error('Failed to read campaign status.');
+      }
+      process.exit(1);
+    }
+    return;
+  }
+
+  console.error(`Unknown campaign subcommand: ${subcommand}`);
+  process.exit(1);
+}
+
 async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length === 0) {
     console.error('Missing encounter subcommand.');
@@ -6275,6 +6520,11 @@ async function main(): Promise<void> {
 
   if (command === 'character') {
     await handleCharacterCommand(rest);
+    return;
+  }
+
+  if (command === 'campaign') {
+    await handleCampaignCommand(rest);
     return;
   }
 
