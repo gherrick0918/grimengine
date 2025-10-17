@@ -787,16 +787,22 @@ async function handleLootRollCommand(args: string[]): Promise<void> {
       into: target,
     });
     saveEncounter(encounter);
-    const summary =
-      receipt.items.length > 0
-        ? receipt.items.map((item) => `${item.label} x${item.qty}`).join(', ')
-        : 'nothing';
+    if (receipt.items.length === 0) {
+      const warning =
+        receipt.warnings?.[0] ?? `Loot table "${receipt.table}" produced no loot.`;
+      console.log(`${warning} Tip: check the table definition or run 'pnpm run seed:loot'.`);
+      process.exit(0);
+      return;
+    }
+    const summary = receipt.items
+      .map((item) => `${item.label} x${item.qty}`)
+      .join(', ');
     console.log(`Loot: ${receipt.table} → ${summary} (to: ${receipt.target})`);
     process.exit(0);
   } catch (error) {
     if (error instanceof LootTableNotFoundError) {
       const available = error.available;
-      const prefix = `Loot table "${error.table}" not found. Run 'pnpm run seed:loot' to install starter tables.`;
+      const prefix = `Loot table "${error.table}" not found. Tip: run 'pnpm run seed:loot' first.`;
       if (available.length > 0) {
         console.log(`${prefix} Available tables: ${available.join(', ')}`);
       } else {
