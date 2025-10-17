@@ -159,7 +159,7 @@ import {
 } from './lib/campaigns';
 import { getActorIdByName } from './lib/resolve';
 import { currentCampaignForLogging, logIfEnabled } from './logging';
-import { lootRoll } from './loot';
+import { lootRoll, seedLootBasic } from './loot';
 
 const SAMPLE_MONSTER_TYPES = {
   goblin: 'Goblin',
@@ -740,6 +740,15 @@ async function handleLootRollCommand(args: string[]): Promise<void> {
   try {
     result = await lootRoll(table);
   } catch (error) {
+    const err = error as NodeJS.ErrnoException | undefined;
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+      console.log(
+        `Loot table "${table}" not found. Tip: run 'pnpm dev -- loot seed basic' to create starter tables.`,
+      );
+      process.exit(0);
+      return;
+    }
+
     if (error instanceof Error) {
       console.error(`Failed to roll loot table "${table}": ${error.message}`);
     } else {
@@ -774,7 +783,47 @@ async function handleLootCommand(args: string[]): Promise<void> {
     return;
   }
 
+  if (subcommand === 'seed') {
+    await handleLootSeedCommand(rest);
+    return;
+  }
+
   console.error(`Unknown loot subcommand: ${subcommand}`);
+  process.exit(1);
+}
+
+async function handleLootSeedCommand(args: string[]): Promise<void> {
+  if (args.length === 0) {
+    console.error('Usage: pnpm dev -- loot seed <preset>');
+    process.exit(1);
+    return;
+  }
+
+  const [preset] = args;
+  if (!preset) {
+    console.error('Loot seed preset is required.');
+    process.exit(1);
+    return;
+  }
+
+  if (preset === 'basic') {
+    try {
+      const file = await seedLootBasic();
+      console.log(`Loot table written → ${file}`);
+      process.exit(0);
+      return;
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(`Failed to seed loot tables: ${error.message}`);
+      } else {
+        console.error(`Failed to seed loot tables: ${String(error)}`);
+      }
+      process.exit(1);
+      return;
+    }
+  }
+
+  console.error(`Unknown loot seed preset: ${preset}`);
   process.exit(1);
 }
 
