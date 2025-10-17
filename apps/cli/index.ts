@@ -134,6 +134,7 @@ import {
   importMonsters as importCompendiumMonsters,
   readIndex as readCompendiumIndex,
   resolveCompendiumTemplate,
+  seedBasic as seedCompendiumBasic,
   summarizeTemplate,
 } from './compendium';
 import {
@@ -181,6 +182,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- monster fetch "<name>"');
   console.log('  pnpm dev -- monster list');
   console.log('  pnpm dev -- monster show "<name>"');
+  console.log('  pnpm dev -- compendium seed srd-basic');
   console.log('  pnpm dev -- compendium import "<path>"');
   console.log('  pnpm dev -- compendium stats "<slug-or-name>"');
   console.log('  pnpm dev -- spell fetch "<name>"');
@@ -5993,11 +5995,22 @@ async function handleMonsterShowCommand(name: string): Promise<void> {
 
 async function handleCompendiumCommand(rawArgs: string[]): Promise<void> {
   if (rawArgs.length === 0) {
-    console.error('Usage: pnpm dev -- compendium <import|stats> ...');
+    console.error('Usage: pnpm dev -- compendium <seed|import|stats> ...');
     process.exit(1);
   }
 
   const [subcommand, ...rest] = rawArgs;
+
+  if (subcommand === 'seed') {
+    const target = rest.join(' ').trim();
+    if (target !== 'srd-basic') {
+      console.error('Usage: pnpm dev -- compendium seed srd-basic');
+      process.exit(1);
+    }
+    const count = await seedCompendiumBasic();
+    console.log(`Compendium seeded. Monsters: ${count}.`);
+    process.exit(0);
+  }
 
   if (subcommand === 'import') {
     const target = rest[0];
@@ -6006,8 +6019,12 @@ async function handleCompendiumCommand(rawArgs: string[]): Promise<void> {
       process.exit(1);
     }
     try {
-      const count = await importCompendiumMonsters(target);
-      console.log(`Compendium monsters: ${count} entries.`);
+      const result = await importCompendiumMonsters(target);
+      if (!result.ok) {
+        console.log(result.message);
+        process.exit(0);
+      }
+      console.log(`Compendium monsters: ${result.count} entries.`);
       process.exit(0);
     } catch (error) {
       if (error instanceof Error) {
