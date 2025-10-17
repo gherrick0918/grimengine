@@ -135,10 +135,13 @@ function extractSlug(monster: any, fallback: string): string | undefined {
 
 export async function importMonsters(
   srcPath: string,
-): Promise<{ ok: true; count: number } | { ok: false; message: string }> {
+  options: { reset?: boolean } = {},
+): Promise<{ ok: true; count: number; added: number } | { ok: false; message: string }> {
   try {
-    const index = await readIndex();
+    const index = options.reset ? {} : await readIndex();
     const files = await resolveJsonFiles(srcPath);
+
+    let added = 0;
 
     for (const file of files) {
       const contents = await fs.readFile(file, 'utf-8');
@@ -147,11 +150,14 @@ export async function importMonsters(
       if (!slug) {
         continue;
       }
+      if (!index[slug]) {
+        added += 1;
+      }
       index[slug] = monster;
     }
 
     await writeIndex(index);
-    return { ok: true, count: Object.keys(index).length };
+    return { ok: true, count: Object.keys(index).length, added };
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
       return {
