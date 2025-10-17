@@ -14,6 +14,7 @@ import { resolveAttack } from './combat.js';
 import { roll } from './dice.js';
 import type { CoinBundle } from './loot.js';
 import { applyDamage as applyDeathDamage, getCurrentHp } from './death.js';
+import type { InventoryItem } from './inventory.js';
 
 export type Side = 'party' | 'foe' | 'neutral';
 
@@ -92,6 +93,8 @@ export interface EncounterState {
   lootLog?: { coins: CoinBundle; items: string[]; note?: string }[];
   xpLog?: { crs: string[]; total: number }[];
   concentration?: Record<string, ConcentrationEntry>;
+  partyBag?: InventoryItem[];
+  inventories?: Record<string, InventoryItem[]>;
 }
 
 export interface EncounterCheckInput {
@@ -276,7 +279,9 @@ export function createEncounter(seed?: string): EncounterState {
     lootLog: [],
     xpLog: [],
     concentration: {},
-  }
+    partyBag: [],
+    inventories: {},
+  };
 }
 
 function nextTagIdentifier(tags: ActorTag[] | undefined): string {
