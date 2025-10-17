@@ -22,6 +22,144 @@ export const CR_XP: Record<string, number> = {
 export type CoinBundle = { cp: number; sp: number; gp: number; pp: number };
 export type LootRoll = { coins: CoinBundle; items: string[] };
 
+export const LOOT_COIN_DENOMINATIONS = ['Copper', 'Silver', 'Electrum', 'Gold', 'Platinum'] as const;
+export type LootCoinDenomination = (typeof LOOT_COIN_DENOMINATIONS)[number];
+
+export type LootQty = number | { dice: string };
+
+export interface LootItemSpec {
+  type?: 'coins';
+  denom?: LootCoinDenomination;
+  name?: string;
+  qty?: LootQty;
+}
+
+export interface LootEntry {
+  item: LootItemSpec;
+  weight: number;
+}
+
+export interface LootTable {
+  name: string;
+  rolls?: number;
+  entries: LootEntry[];
+}
+
+export type RolledLootItem =
+  | { kind: 'coins'; denom: LootCoinDenomination; qty: number }
+  | { kind: 'item'; name: string; qty: number };
+
+export interface RollLootOptions {
+  random?: () => number;
+  seed?: string;
+}
+
+function normalizedRandom(random: () => number): number {
+  const value = random();
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  if (value <= 0) {
+    return 0;
+  }
+  if (value >= 1) {
+    return 1 - Number.EPSILON;
+  }
+  return value;
+}
+
+function resolveQty(spec: LootQty | undefined, rollIndex: number, opts: RollLootOptions): number {
+  if (spec === undefined) {
+    return 1;
+  }
+  if (typeof spec === 'number') {
+    return spec;
+  }
+  const expr = spec.dice.trim();
+  if (!expr) {
+    return 0;
+  }
+  const seed = opts.seed ? `${opts.seed}:roll${rollIndex}` : undefined;
+  return roll(expr, seed ? { seed } : undefined).total;
+}
+
+function normalizeRollCount(value: number | undefined): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 1;
+  }
+  const normalized = Math.floor(numeric);
+  return normalized > 0 ? normalized : 1;
+}
+
+function normalizeWeight(weight: number | undefined): number {
+  const numeric = Number(weight);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  return numeric > 0 ? numeric : 0;
+}
+
+function makeItemKey(item: LootItemSpec): string | undefined {
+  if (item.type === 'coins') {
+    return item.denom ? `coins:${item.denom}` : undefined;
+  }
+  if (item.name) {
+    return `item:${item.name.trim().toLowerCase()}`;
+  }
+  return undefined;
+}
+
+export function rollLoot(table: LootTable, options: RollLootOptions = {}): RolledLootItem[] {
+  const rng = options.random ?? Math.random;
+  const entries = table.entries
+    .map((entry) => ({ entry, weight: normalizeWeight(entry.weight) }))
+    .filter((candidate) => candidate.weight > 0 && makeItemKey(candidate.entry.item));
+
+  if (entries.length === 0) {
+    return [];
+  }
+
+  const totalWeight = entries.reduce((sum, candidate) => sum + candidate.weight, 0);
+  if (totalWeight <= 0) {
+    return [];
+  }
+
+  const rolls = normalizeRollCount(table.rolls);
+  const results: RolledLootItem[] = [];
+
+  for (let i = 0; i < rolls; i += 1) {
+    const sample = normalizedRandom(rng) * totalWeight;
+    let accumulated = 0;
+    let selected = entries[entries.length - 1]!;
+    for (const candidate of entries) {
+      accumulated += candidate.weight;
+      if (sample < accumulated) {
+        selected = candidate;
+        break;
+      }
+    }
+
+    const qtyRaw = resolveQty(selected.entry.item.qty, i, options);
+    const qty = Math.trunc(qtyRaw);
+    if (qty <= 0) {
+      continue;
+    }
+
+    const item = selected.entry.item;
+    if (item.type === 'coins') {
+      if (!item.denom) {
+        continue;
+      }
+      results.push({ kind: 'coins', denom: item.denom, qty });
+    } else if (item.name) {
+      results.push({ kind: 'item', name: item.name, qty });
+    }
+  }
+
+  return results;
+}
+
 /** CR→coin dice expressions (very simple stub; expandable) */
 const CR_COIN_EXPR: Record<string, Partial<Record<keyof CoinBundle, string>>> = {
   '0': { cp: '1d6x5' },

@@ -126,8 +126,18 @@ export type {
   ConcentrationEntry,
   EncounterCheckInput,
 } from './encounter.js';
-export { rollCoinsForCR, xpForCR, totalXP } from './loot.js';
-export type { CoinBundle, LootRoll } from './loot.js';
+export { rollCoinsForCR, xpForCR, totalXP, rollLoot, LOOT_COIN_DENOMINATIONS } from './loot.js';
+export type {
+  CoinBundle,
+  LootRoll,
+  LootCoinDenomination,
+  LootEntry,
+  LootItemSpec,
+  LootQty,
+  LootTable,
+  RolledLootItem,
+  RollLootOptions,
+} from './loot.js';
 export { castSpell, chooseCastingAbility, spellSaveDC, diceForCharacterLevel, diceForSlotLevel } from './spells.js';
 export type { CastOptions, CastResult, NormalizedSpell } from './spells.js';
 export { startHuntersMark, endHuntersMark } from './spells/huntersMark.js';
