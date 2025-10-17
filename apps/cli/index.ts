@@ -77,6 +77,12 @@ import {
   remindersFor,
   concentrationDCFromDamage,
   concentrationReminderLinesForDamage,
+  listBag,
+  listInv,
+  giveToParty,
+  giveToActor,
+  takeFromParty,
+  takeFromActor,
   rollCoinsForCR,
   totalXP,
   applyDamage,
@@ -101,6 +107,7 @@ import {
   type SpellSlots,
   type SkillName,
   type CoinBundle,
+  type InventoryItem,
   type CastResult,
   type Condition,
   type ReminderEvent,
@@ -152,6 +159,7 @@ import {
 } from './lib/campaigns';
 import { getActorIdByName } from './lib/resolve';
 import { currentCampaignForLogging, logIfEnabled } from './logging';
+import { lootRoll } from './loot';
 
 const SAMPLE_MONSTER_TYPES = {
   goblin: 'Goblin',
@@ -215,6 +223,11 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter start [--seed <value>]');
   console.log('  pnpm dev -- encounter add pc "<name>"');
   console.log('  pnpm dev -- encounter add monster "<name>" [--count <n>]');
+  console.log('  pnpm dev -- inventory list [Who]');
+  console.log('  pnpm dev -- inventory give <Who> "<Item>" <Qty>');
+  console.log('  pnpm dev -- inventory take <Who> "<Item>" <Qty>');
+  console.log('  pnpm dev -- inventory drop "<Item>" <Qty>');
+  console.log('  pnpm dev -- loot roll "<Table>"');
   console.log('  pnpm dev -- session tail [--n <lines>]');
   console.log(
     '  pnpm dev -- encounter add <goblin|bandit|skeleton> [--n <count>] [--name <BaseName>] [--side <party|foe|neutral>]',
@@ -511,6 +524,289 @@ function requireEncounterState(): EncounterState {
     process.exit(1);
   }
   return encounter;
+}
+
+function printInventory(label: string, items: InventoryItem[], emptyMessage: string): void {
+  if (items.length === 0) {
+    console.log(emptyMessage);
+    return;
+  }
+  console.log(`${label}:`);
+  items.forEach((item) => {
+    console.log(`- ${item.name} x${item.qty}`);
+  });
+}
+
+function parseInventoryTransferArgs(args: string[]): { who: string; item: string; qty: number } {
+  if (args.length < 3) {
+    throw new Error('Usage: pnpm dev -- inventory <give|take> <Who> "<Item>" <Qty>');
+  }
+  const who = args[0]!;
+  const qtyRaw = args[args.length - 1]!;
+  const item = args.slice(1, -1).join(' ').trim();
+  if (!item) {
+    throw new Error('Item name is required.');
+  }
+  const qty = parsePositiveInteger(qtyRaw, 'Quantity');
+  return { who, item, qty };
+}
+
+function parseDropArgs(args: string[]): { item: string; qty: number } {
+  if (args.length < 2) {
+    throw new Error('Usage: pnpm dev -- inventory drop "<Item>" <Qty>');
+  }
+  const qtyRaw = args[args.length - 1]!;
+  const item = args.slice(0, -1).join(' ').trim();
+  if (!item) {
+    throw new Error('Item name is required.');
+  }
+  const qty = parsePositiveInteger(qtyRaw, 'Quantity');
+  return { item, qty };
+}
+
+function handleInventoryListCommand(args: string[]): void {
+  const encounter = loadEncounter();
+  if (!encounter) {
+    console.log('No encounter in progress.');
+    process.exit(0);
+  }
+
+  const targetRaw = args.join(' ').trim();
+  const normalized = targetRaw.toLowerCase();
+
+  if (!targetRaw || normalized === 'party' || normalized === 'bag') {
+    const items = listBag(encounter);
+    printInventory('Party bag', items, 'Party bag is empty.');
+    process.exit(0);
+    return;
+  }
+
+  let actorId: string;
+  try {
+    actorId = getActorIdByName(encounter, targetRaw);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error(String(error));
+    }
+    process.exit(1);
+    return;
+  }
+
+  const actor = encounter.actors[actorId];
+  const items = listInv(encounter, actorId);
+  const label = actor ? `Inventory for ${actor.name}` : `Inventory for ${targetRaw}`;
+  const emptyMessage = actor ? `${actor.name} has no items.` : `${targetRaw} has no items.`;
+  printInventory(label, items, emptyMessage);
+  process.exit(0);
+}
+
+function handleInventoryGiveCommand(args: string[]): void {
+  let parsed;
+  try {
+    parsed = parseInventoryTransferArgs(args);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const { who, item, qty } = parsed;
+  const encounter = requireEncounterState();
+  const normalized = who.trim().toLowerCase();
+
+  if (normalized === 'party' || normalized === 'bag') {
+    giveToParty(encounter, item, qty);
+    saveEncounter(encounter);
+    console.log(`Gave ${item} x${qty} to the party bag.`);
+    process.exit(0);
+    return;
+  }
+
+  let actorId: string;
+  try {
+    actorId = getActorIdByName(encounter, who);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error(String(error));
+    }
+    process.exit(1);
+    return;
+  }
+
+  giveToActor(encounter, actorId, item, qty);
+  saveEncounter(encounter);
+  const actorName = encounter.actors[actorId]?.name ?? who;
+  console.log(`Gave ${item} x${qty} to ${actorName}.`);
+  process.exit(0);
+}
+
+function handleInventoryTakeCommand(args: string[]): void {
+  let parsed;
+  try {
+    parsed = parseInventoryTransferArgs(args);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const { who, item, qty } = parsed;
+  const encounter = requireEncounterState();
+  const normalized = who.trim().toLowerCase();
+
+  if (normalized === 'party' || normalized === 'bag') {
+    const removed = takeFromParty(encounter, item, qty);
+    if (removed > 0) {
+      saveEncounter(encounter);
+    }
+    console.log(`Took ${item} x${removed} from the party bag.`);
+    process.exit(0);
+    return;
+  }
+
+  let actorId: string;
+  try {
+    actorId = getActorIdByName(encounter, who);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error(String(error));
+    }
+    process.exit(1);
+    return;
+  }
+
+  const removed = takeFromActor(encounter, actorId, item, qty);
+  if (removed > 0) {
+    saveEncounter(encounter);
+  }
+  const actorName = encounter.actors[actorId]?.name ?? who;
+  console.log(`Took ${item} x${removed} from ${actorName}.`);
+  process.exit(0);
+}
+
+function handleInventoryDropCommand(args: string[]): void {
+  let parsed;
+  try {
+    parsed = parseDropArgs(args);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    process.exit(1);
+    return;
+  }
+
+  const { item, qty } = parsed;
+  const encounter = requireEncounterState();
+  const removed = takeFromParty(encounter, item, qty);
+  if (removed > 0) {
+    saveEncounter(encounter);
+  }
+  if (removed === 0) {
+    console.log(`No ${item} found in the party bag.`);
+  } else {
+    console.log(`Dropped ${item} x${removed} from the party bag.`);
+  }
+  process.exit(0);
+}
+
+async function handleLootRollCommand(args: string[]): Promise<void> {
+  if (args.length === 0) {
+    console.error('Usage: pnpm dev -- loot roll "<Table>"');
+    process.exit(1);
+    return;
+  }
+
+  const table = args.join(' ').trim();
+  if (!table) {
+    console.error('Table name is required.');
+    process.exit(1);
+    return;
+  }
+
+  const encounter = requireEncounterState();
+
+  let result;
+  try {
+    result = await lootRoll(table);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`Failed to roll loot table "${table}": ${error.message}`);
+    } else {
+      console.error(`Failed to roll loot table "${table}": ${String(error)}`);
+    }
+    process.exit(1);
+    return;
+  }
+
+  if (!result.item) {
+    console.log(`No row matched in loot table "${table}".`);
+    process.exit(0);
+    return;
+  }
+
+  giveToParty(encounter, result.item, result.qty);
+  saveEncounter(encounter);
+  console.log(`Loot: [d100=${result.roll}] ${result.item} x${result.qty} → party bag`);
+  process.exit(0);
+}
+
+async function handleLootCommand(args: string[]): Promise<void> {
+  if (args.length === 0) {
+    console.error('Missing loot subcommand.');
+    process.exit(1);
+    return;
+  }
+
+  const [subcommand, ...rest] = args;
+  if (subcommand === 'roll') {
+    await handleLootRollCommand(rest);
+    return;
+  }
+
+  console.error(`Unknown loot subcommand: ${subcommand}`);
+  process.exit(1);
+}
+
+async function handleInventoryCommand(args: string[]): Promise<void> {
+  if (args.length === 0) {
+    console.error('Missing inventory subcommand.');
+    process.exit(1);
+    return;
+  }
+
+  const [subcommand, ...rest] = args;
+  const normalized = subcommand.toLowerCase();
+
+  if (normalized === 'list') {
+    handleInventoryListCommand(rest);
+    return;
+  }
+  if (normalized === 'give') {
+    handleInventoryGiveCommand(rest);
+    return;
+  }
+  if (normalized === 'take') {
+    handleInventoryTakeCommand(rest);
+    return;
+  }
+  if (normalized === 'drop') {
+    handleInventoryDropCommand(rest);
+    return;
+  }
+
+  console.error(`Unknown inventory subcommand: ${subcommand}`);
+  process.exit(1);
 }
 
 function formatDamageExpression(base: string, modifier: number): string {
@@ -7056,6 +7352,16 @@ async function main(): Promise<void> {
 
   if (command === 'session') {
     await handleSessionCommand(rest);
+    return;
+  }
+
+  if (command === 'inventory') {
+    await handleInventoryCommand(rest);
+    return;
+  }
+
+  if (command === 'loot') {
+    await handleLootCommand(rest);
     return;
   }
 
