@@ -1,0 +1,149 @@
+PS C:\dev\grimengine> pn
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      pnpm -w build; `
+>> pnpm test; `
+>> pnpm dev -- compendium seed srd-basic; `
+>> pnpm dev -- encounter start; `
+>> pnpm dev -- encounter build "goblin x2"; `
+>> pnpm dev -- compendium stats goblin; `
+>> pnpm dev -- encounter end;
+
+> grimengine@1.0.0 build C:\dev\grimengine
+> turbo run build
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/cli, @grimengine/core, @grimengine/dnd5e-api, @grimengine/rules-srd
+• Running build in 4 packages
+• Remote caching disabled
+
+No tasks were executed as part of this run.
+
+ Tasks:    0 successful, 0 total
+Cached:    0 cached, 0 total
+  Time:    494ms
+
+                                                                                                                                                     
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/cli, @grimengine/core, @grimengine/dnd5e-api, @grimengine/rules-srd
+• Running test in 4 packages
+• Remote caching disabled
+@grimengine/core:test: cache hit, replaying logs 620ed6aef142cb81
+@grimengine/core:test: 
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest --config vitest.config.ts
+@grimengine/core:test:
+@grimengine/core:test:
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test:
+@grimengine/core:test:  ✓ tests/logging.test.ts (3 tests) 71ms
+@grimengine/core:test:  ✓ tests/combat.test.ts (8 tests) 20ms
+@grimengine/core:test:  ✓ tests/encounter.test.ts (3 tests) 17ms
+@grimengine/core:test:  ✓ tests/conditions.test.ts (11 tests) 15ms
+@grimengine/core:test:  ✓ tests/spells.test.ts (9 tests) 19ms
+@grimengine/core:test:  ✓ tests/rest.test.ts (3 tests) 18ms
+@grimengine/core:test:  ✓ tests/encounter-checks.test.ts (4 tests) 16ms
+@grimengine/core:test:  ✓ tests/character.test.ts (6 tests) 15ms
+@grimengine/core:test:  ✓ tests/weapons.test.ts (6 tests) 14ms
+@grimengine/core:test:  ✓ tests/reminders.test.ts (4 tests) 13ms
+@grimengine/core:test:  ✓ tests/compendium.seed.test.ts (3 tests) 48ms
+@grimengine/core:test:  ✓ tests/compendium.builder.test.ts (3 tests) 91ms
+@grimengine/core:test:  ✓ tests/advdis.reminders.test.ts (3 tests) 10ms
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 14ms
+@grimengine/core:test:  ✓ tests/bless.test.ts (3 tests) 13ms
+@grimengine/core:test:  ✓ tests/initiative.test.ts (3 tests) 13ms
+@grimengine/core:test:  ✓ tests/huntersMark.test.ts (4 tests) 15ms
+@grimengine/core:test:  ✓ tests/advantage.wire.test.ts (7 tests) 13ms
+@grimengine/core:test:  ✓ tests/tags.test.ts (3 tests) 15ms
+@grimengine/core:test:  ✓ tests/loot.test.ts (5 tests) 11ms
+@grimengine/core:test:  ✓ tests/checks.test.ts (5 tests) 11ms
+@grimengine/core:test:  ✓ tests/skills.test.ts (4 tests) 10ms
+@grimengine/core:test:  ✓ tests/guidance_bi_reminders.test.ts (4 tests) 13ms
+@grimengine/core:test:  ✓ tests/slots.test.ts (5 tests) 11ms
+@grimengine/core:test:  ✓ tests/bardicInspiration.consume.test.ts (2 tests) 9ms
+@grimengine/core:test:  ✓ tests/derived.test.ts (7 tests) 10ms
+@grimengine/core:test:  ✓ tests/death.test.ts (6 tests) 11ms
+@grimengine/core:test:  ✓ tests/turns.duration.test.ts (3 tests) 11ms
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 11ms
+@grimengine/core:test:  ✓ tests/conditions.reminders.test.ts (3 tests) 10ms
+@grimengine/core:test:  ✓ tests/clear.helper.test.ts (2 tests) 9ms
+@grimengine/core:test:  ✓ tests/monster-normalize.test.ts (1 test) 7ms
+@grimengine/core:test:  ✓ tests/concentration.test.ts (3 tests) 8ms
+@grimengine/core:test:  ✓ tests/concentrationDamageReminders.test.ts (4 tests) 8ms
+@grimengine/core:test:  ✓ tests/derivationParity.test.ts (3 tests) 7ms
+@grimengine/core:test:
+@grimengine/core:test:  Test Files  35 passed (35)
+@grimengine/core:test:       Tests  156 passed (156)
+@grimengine/core:test:    Start at  10:21:59
+@grimengine/core:test:    Duration  5.69s (transform 3.59s, setup 0ms, collect 7.73s, tests 608ms, environment 18ms, prepare 11.05s)
+@grimengine/core:test:
+@grimengine/cli:test: cache hit (outputs already on disk), replaying logs 7aef43fb9129cc4d
+@grimengine/cli:test:
+@grimengine/cli:test: > @grimengine/cli@0.0.0 test C:\dev\grimengine\apps\cli
+@grimengine/cli:test: > vitest --config vitest.config.ts
+@grimengine/cli:test:
+@grimengine/cli:test:
+@grimengine/cli:test:  RUN  v3.2.4 C:/dev/grimengine/apps/cli
+@grimengine/cli:test:
+@grimengine/cli:test:  ✓ tests/encounter-snapshots.test.ts (2 tests) 14ms
+@grimengine/cli:test:
+@grimengine/cli:test:  Test Files  1 passed (1)
+@grimengine/cli:test:       Tests  2 passed (2)
+@grimengine/cli:test:    Start at  10:21:32
+@grimengine/cli:test:    Duration  2.15s (transform 914ms, setup 0ms, collect 1.05s, tests 14ms, environment 0ms, prepare 364ms)
+@grimengine/cli:test:
+
+ Tasks:    2 successful, 2 total
+Cached:    2 cached, 2 total
+  Time:    714ms >>> FULL TURBO
+
+                                                                                                                                                     
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "compendium" "seed" "srd-basic"
+
+Compendium seeded. Monsters: 3.
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "start"
+
+Encounter started.
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "build" "goblin x2"
+
+Built encounter: goblin x2
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "compendium" "stats" "goblin"
+
+Goblin — AC 15 — HP 7
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "end"
+
+Encounter ended.
+PS C:\dev\grimengine> 
