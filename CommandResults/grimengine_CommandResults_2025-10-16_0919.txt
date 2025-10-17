@@ -1,0 +1,161 @@
+PS C:\dev\grimengine> pnpm -w build; `
+>> pnpm test; `
+>> pnpm run seed:characters; `
+>> pnpm dev -- encounter start; `
+>> pnpm dev -- character load-name "Kara"; `
+>> pnpm dev -- encounter add pc "Kara"; `
+>> pnpm dev -- encounter damage "Kara" 999; `
+>> pnpm dev -- death save "Kara"; `
+>> pnpm dev -- death save "Kara"; `
+>> pnpm dev -- stabilize "Kara"; `
+>> pnpm dev -- encounter heal "Kara" 5; `
+>> pnpm dev -- encounter end; `
+>> pnpm dev -- character unload;
+
+> grimengine@1.0.0 build C:\dev\grimengine
+> turbo run build
+
+turbo 2.5.8
+
+ WARNING  stale pid file at "C:\\Users\\gherr\\AppData\\Local\\Temp\\turbod\\43a4cf7aca0adda0\\turbod.pid"
+• Packages in scope: @grimengine/cli, @grimengine/core, @grimengine/dnd5e-api, @grimengine/rules-srd
+• Running build in 4 packages
+• Remote caching disabled
+
+No tasks were executed as part of this run.
+
+ Tasks:    0 successful, 0 total
+Cached:    0 cached, 0 total
+  Time:    665ms
+
+                                                                                                                                                     
+> grimengine@1.0.0 test C:\dev\grimengine
+> turbo run test
+
+turbo 2.5.8
+
+• Packages in scope: @grimengine/cli, @grimengine/core, @grimengine/dnd5e-api, @grimengine/rules-srd
+• Running test in 4 packages
+• Remote caching disabled
+@grimengine/core:test: cache miss, executing 3ed672613594ff80
+@grimengine/cli:test: cache miss, executing 86593324e05ae5fa
+@grimengine/cli:test: 
+@grimengine/cli:test: > @grimengine/cli@0.0.0 test C:\dev\grimengine\apps\cli
+@grimengine/cli:test: > vitest --config vitest.config.ts
+@grimengine/cli:test:
+@grimengine/core:test:
+@grimengine/core:test: > @grimengine/core@0.0.0 test C:\dev\grimengine\packages\core
+@grimengine/core:test: > vitest --config vitest.config.ts
+@grimengine/core:test: 
+@grimengine/core:test: 
+@grimengine/cli:test: 
+@grimengine/core:test:  RUN  v3.2.4 C:/dev/grimengine/packages/core
+@grimengine/core:test:
+@grimengine/cli:test:  RUN  v3.2.4 C:/dev/grimengine/apps/cli
+@grimengine/cli:test:
+@grimengine/core:test:  ✓ tests/combat.test.ts (8 tests) 12ms
+@grimengine/core:test:  ✓ tests/tags.test.ts (3 tests) 11ms
+@grimengine/core:test:  ✓ tests/encounter.test.ts (3 tests) 14ms
+@grimengine/core:test:  ✓ tests/advantage.wire.test.ts (7 tests) 11ms
+@grimengine/core:test:  ✓ tests/character.test.ts (6 tests) 11ms
+@grimengine/core:test:  ✓ tests/weapons.test.ts (6 tests) 11ms
+@grimengine/core:test:  ✓ tests/spells.test.ts (9 tests) 17ms
+@grimengine/core:test:  ✓ tests/abilityScores.test.ts (9 tests) 12ms
+@grimengine/cli:test:  ✓ tests/encounter-snapshots.test.ts (2 tests) 16ms
+@grimengine/core:test:  ✓ tests/initiative.test.ts (3 tests) 12ms
+@grimengine/core:test:  ✓ tests/conditions.test.ts (11 tests) 14ms
+@grimengine/core:test:  ✓ tests/encounter-checks.test.ts (4 tests) 11ms
+@grimengine/cli:test:
+@grimengine/cli:test:  Test Files  1 passed (1)
+@grimengine/cli:test:       Tests  2 passed (2)
+@grimengine/cli:test:    Start at  09:18:46
+@grimengine/cli:test:    Duration  1.89s (transform 849ms, setup 0ms, collect 961ms, tests 16ms, environment 0ms, prepare 258ms)
+@grimengine/cli:test: 
+@grimengine/core:test:  ✓ tests/bless.test.ts (3 tests) 13ms
+@grimengine/core:test:  ✓ tests/huntersMark.test.ts (4 tests) 13ms
+@grimengine/core:test:  ✓ tests/rest.test.ts (3 tests) 11ms
+@grimengine/core:test:  ✓ tests/loot.test.ts (5 tests) 12ms
+@grimengine/core:test:  ✓ tests/advdis.reminders.test.ts (3 tests) 9ms
+@grimengine/core:test:  ✓ tests/reminders.test.ts (4 tests) 11ms
+@grimengine/core:test:  ✓ tests/checks.test.ts (5 tests) 11ms
+@grimengine/core:test:  ✓ tests/guidance_bi_reminders.test.ts (4 tests) 10ms
+@grimengine/core:test:  ✓ tests/bardicInspiration.consume.test.ts (2 tests) 8ms
+@grimengine/core:test:  ✓ tests/slots.test.ts (5 tests) 9ms
+@grimengine/core:test:  ✓ tests/turns.duration.test.ts (3 tests) 9ms
+@grimengine/core:test:  ✓ tests/conditions.reminders.test.ts (3 tests) 8ms
+@grimengine/core:test:  ✓ tests/derived.test.ts (7 tests) 11ms
+@grimengine/core:test:  ✓ tests/death.test.ts (6 tests) 9ms
+@grimengine/core:test:  ✓ tests/skills.test.ts (4 tests) 9ms
+@grimengine/core:test:  ✓ tests/dice.test.ts (4 tests) 9ms
+@grimengine/core:test:  ✓ tests/concentration.test.ts (3 tests) 8ms
+@grimengine/core:test:  ✓ tests/concentrationDamageReminders.test.ts (4 tests) 9ms
+@grimengine/core:test:  ✓ tests/derivationParity.test.ts (3 tests) 7ms
+@grimengine/core:test:  ✓ tests/monster-normalize.test.ts (1 test) 9ms
+@grimengine/core:test: 
+@grimengine/core:test:  Test Files  31 passed (31)
+@grimengine/core:test:       Tests  145 passed (145)
+@grimengine/core:test:    Start at  09:18:46
+@grimengine/core:test:    Duration  4.04s (transform 1.97s, setup 0ms, collect 3.96s, tests 330ms, environment 10ms, prepare 7.94s)
+@grimengine/core:test:
+
+ Tasks:    2 successful, 2 total
+Cached:    0 cached, 2 total
+  Time:    6.206s
+
+                                                                                                                                                     
+> grimengine@1.0.0 seed:characters C:\dev\grimengine
+> tsx tools/seed-characters.ts
+
+Seeded Bruni -> .data\characters\Bruni.json
+Seeded Kara -> .data\characters\Kara.json
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "start"
+
+Encounter started.
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "load-name" "Kara"
+
+Loaded character Kara (lvl 3). PB +2
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "add" "pc" "Kara"
+
+Added PC Kara (id=kara).
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "damage" "Kara" "999"
+
+Kara takes 999 damage (HP 0/27 (S:0 F:0)).
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "death" "save" "Kara"
+
+Death Save: Success — S:1 F:0 (roll=17)
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "death" "save" "Kara"
+
+Death Save: Failure — S:1 F:1 (roll=6)
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "stabilize" "Kara"
+
+Kara is stabilized at 0 HP.
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "heal" "Kara" "5"
+
+Kara heals 5 HP (HP 5/27).
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "encounter" "end"
+
+Encounter ended.
+
+> grimengine@1.0.0 dev C:\dev\grimengine
+> tsx apps/cli/index.ts "character" "unload"
+
+Character session cleared.
+PS C:\dev\grimengine> 
