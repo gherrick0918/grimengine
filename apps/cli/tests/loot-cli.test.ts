@@ -23,7 +23,7 @@ function ensureLootDir(root: string): string {
   return dir;
 }
 
-function writeLootTable(root: string, table: LootTable): void {
+function writeLootTable(root: string, table: Record<string, unknown> & { name: string }): void {
   const dir = ensureLootDir(root);
   const path = join(dir, `${table.name}.json`);
   writeFileSync(path, JSON.stringify(table, null, 2), 'utf-8');
@@ -122,6 +122,38 @@ describe('loot command helpers', () => {
     expect(receipt.target).toBe('Kara');
     expect(receipt.items).toEqual([{ kind: 'coins', label: 'Gold coins', qty: 5, denom: 'Gold' }]);
     expect(listInv(encounter, pc.id)).toEqual([{ name: 'Gold coins', qty: 5 }]);
+  });
+
+  it('supports legacy rows-based loot tables', async () => {
+    const table = {
+      name: 'legacy-pouch',
+      rows: [
+        { range: [1, 60], item: 'Old Button', qty: 2 },
+        { range: [61, 100], item: { type: 'coins', denom: 'Silver', qty: 4 } },
+      ],
+    };
+    writeLootTable(tempDir, table);
+
+    const rng = sequenceRng([0.2, 0.8]);
+
+    const first = await rollLootIntoEncounter('legacy-pouch', encounter, {
+      baseDir: tempDir,
+      random: rng,
+    });
+    expect(first.items).toEqual([{ kind: 'item', label: 'Old Button', qty: 2, name: 'Old Button' }]);
+    expect(listBag(encounter)).toEqual([{ name: 'Old Button', qty: 2 }]);
+
+    const second = await rollLootIntoEncounter('legacy-pouch', encounter, {
+      baseDir: tempDir,
+      random: rng,
+    });
+    expect(second.items).toEqual([
+      { kind: 'coins', label: 'Silver coins', qty: 4, denom: 'Silver' },
+    ]);
+    expect(listBag(encounter)).toEqual([
+      { name: 'Old Button', qty: 2 },
+      { name: 'Silver coins', qty: 4 },
+    ]);
   });
 
   it('throws a descriptive error when the loot table is missing', async () => {
