@@ -159,7 +159,7 @@ import {
 } from './lib/campaigns';
 import { getActorIdByName } from './lib/resolve';
 import { currentCampaignForLogging, logIfEnabled } from './logging';
-import { lootRoll, seedLootBasic } from './loot';
+import { LootTableNotFoundError, rollLootIntoEncounter } from './loot';
 
 const SAMPLE_MONSTER_TYPES = {
   goblin: 'Goblin',
@@ -227,7 +227,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- inventory give <Who> "<Item>" <Qty>');
   console.log('  pnpm dev -- inventory take <Who> "<Item>" <Qty>');
   console.log('  pnpm dev -- inventory drop "<Item>" <Qty>');
-  console.log('  pnpm dev -- loot roll "<Table>"');
+  console.log('  pnpm dev -- loot roll "<Table>" [--into <party|actorName>]');
   console.log('  pnpm dev -- session tail [--n <lines>]');
   console.log(
     '  pnpm dev -- encounter add <goblin|bandit|skeleton> [--n <count>] [--name <BaseName>] [--side <party|foe|neutral>]',
@@ -720,54 +720,98 @@ function handleInventoryDropCommand(args: string[]): void {
   process.exit(0);
 }
 
-async function handleLootRollCommand(args: string[]): Promise<void> {
+function parseLootRollArgs(args: string[]): { table: string; into?: string } {
   if (args.length === 0) {
-    console.error('Usage: pnpm dev -- loot roll "<Table>"');
-    process.exit(1);
-    return;
+    throw new Error('Usage: pnpm dev -- loot roll "<Table>" [--into <party|actorName>]');
   }
 
-  const table = args.join(' ').trim();
+  const parts: string[] = [];
+  let into: string | undefined;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]!;
+    if (token === '--into') {
+      if (into) {
+        throw new Error('Duplicate --into option.');
+      }
+      const value = args[index + 1];
+      if (!value) {
+        throw new Error('Missing target after --into.');
+      }
+      into = value;
+      index += 1;
+      continue;
+    }
+    parts.push(token);
+  }
+
+  const table = parts.join(' ').trim();
   if (!table) {
-    console.error('Table name is required.');
+    throw new Error('Table name is required.');
+  }
+
+  return { table, into };
+}
+
+async function handleLootRollCommand(args: string[]): Promise<void> {
+  let parsed: { table: string; into?: string };
+  try {
+    parsed = parseLootRollArgs(args);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
     return;
   }
 
   const encounter = requireEncounterState();
+  const { table, into } = parsed;
 
-  let result;
+  let target: 'party' | { actorId: string; label: string };
+  if (!into || into.trim().toLowerCase() === 'party' || into.trim().toLowerCase() === 'party bag') {
+    target = 'party';
+  } else {
+    try {
+      const actorId = getActorIdByName(encounter, into);
+      const actorName = encounter.actors[actorId]?.name ?? into;
+      target = { actorId, label: actorName };
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+      return;
+    }
+  }
+
   try {
-    result = await lootRoll(table);
+    const receipt = await rollLootIntoEncounter(table, encounter, {
+      baseDir: process.cwd(),
+      into: target,
+    });
+    saveEncounter(encounter);
+    const summary =
+      receipt.items.length > 0
+        ? receipt.items.map((item) => `${item.label} x${item.qty}`).join(', ')
+        : 'nothing';
+    console.log(`Loot: ${receipt.table} → ${summary} (to: ${receipt.target})`);
+    process.exit(0);
   } catch (error) {
-    const err = error as NodeJS.ErrnoException | undefined;
-    if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
-      console.log(
-        `Loot table "${table}" not found. Tip: run 'pnpm dev -- loot seed basic' to create starter tables.`,
-      );
+    if (error instanceof LootTableNotFoundError) {
+      const available = error.available;
+      const prefix = `Loot table "${error.table}" not found. Run 'pnpm run seed:loot' to install starter tables.`;
+      if (available.length > 0) {
+        console.log(`${prefix} Available tables: ${available.join(', ')}`);
+      } else {
+        console.log(prefix);
+      }
       process.exit(0);
       return;
     }
-
     if (error instanceof Error) {
       console.error(`Failed to roll loot table "${table}": ${error.message}`);
     } else {
       console.error(`Failed to roll loot table "${table}": ${String(error)}`);
     }
     process.exit(1);
-    return;
   }
-
-  if (!result.item) {
-    console.log(`No row matched in loot table "${table}".`);
-    process.exit(0);
-    return;
-  }
-
-  giveToParty(encounter, result.item, result.qty);
-  saveEncounter(encounter);
-  console.log(`Loot: [d100=${result.roll}] ${result.item} x${result.qty} → party bag`);
-  process.exit(0);
 }
 
 async function handleLootCommand(args: string[]): Promise<void> {
@@ -784,46 +828,12 @@ async function handleLootCommand(args: string[]): Promise<void> {
   }
 
   if (subcommand === 'seed') {
-    await handleLootSeedCommand(rest);
+    console.log("Loot seeding is now handled by 'pnpm run seed:loot'.");
+    process.exit(0);
     return;
   }
 
   console.error(`Unknown loot subcommand: ${subcommand}`);
-  process.exit(1);
-}
-
-async function handleLootSeedCommand(args: string[]): Promise<void> {
-  if (args.length === 0) {
-    console.error('Usage: pnpm dev -- loot seed <preset>');
-    process.exit(1);
-    return;
-  }
-
-  const [preset] = args;
-  if (!preset) {
-    console.error('Loot seed preset is required.');
-    process.exit(1);
-    return;
-  }
-
-  if (preset === 'basic') {
-    try {
-      const file = await seedLootBasic();
-      console.log(`Loot table written → ${file}`);
-      process.exit(0);
-      return;
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(`Failed to seed loot tables: ${error.message}`);
-      } else {
-        console.error(`Failed to seed loot tables: ${String(error)}`);
-      }
-      process.exit(1);
-      return;
-    }
-  }
-
-  console.error(`Unknown loot seed preset: ${preset}`);
   process.exit(1);
 }
 
