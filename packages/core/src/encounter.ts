@@ -835,6 +835,79 @@ export function endConcentration(state: EncounterState, casterId: string): Encou
   return nextActors ? { ...state, concentration, actors: nextActors } : { ...state, concentration };
 }
 
+const CLEARABLE_TAG_PREFIXES = ['condition:', 'spell:'];
+const CLEARABLE_TAG_KEYS = new Set(['bardic-inspiration', 'state:advantage', 'state:disadvantage']);
+const CLEARABLE_TAG_TEXTS = new Set(['bardic inspiration']);
+
+function shouldClearTag(tag: ActorTag): boolean {
+  const key = tag.key?.toLowerCase();
+  if (key) {
+    if (CLEARABLE_TAG_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      return true;
+    }
+    if (CLEARABLE_TAG_KEYS.has(key)) {
+      return true;
+    }
+  }
+
+  const text = tag.text?.toLowerCase();
+  if (text && CLEARABLE_TAG_TEXTS.has(text)) {
+    return true;
+  }
+
+  return false;
+}
+
+export function clearStatusEffects(state: EncounterState, actorIds: string[]): EncounterState {
+  if (!actorIds || actorIds.length === 0) {
+    return state;
+  }
+
+  const uniqueIds = Array.from(new Set(actorIds));
+  let workingState = state;
+
+  for (const actorId of uniqueIds) {
+    workingState = endConcentration(workingState, actorId);
+  }
+
+  let nextActors: Record<string, Actor> | undefined;
+
+  for (const actorId of uniqueIds) {
+    const actor = workingState.actors[actorId];
+    if (!actor) {
+      continue;
+    }
+
+    const tags = actor.tags ?? [];
+    const remainingTags = tags.filter((tag) => !shouldClearTag(tag));
+    const tagsChanged = remainingTags.length !== tags.length;
+    const hadConditions = actor.conditions && Object.keys(actor.conditions).length > 0;
+
+    if (!tagsChanged && !hadConditions) {
+      continue;
+    }
+
+    const updated: Actor = { ...actor };
+    if (tagsChanged) {
+      updated.tags = remainingTags;
+    }
+    if (hadConditions) {
+      updated.conditions = undefined;
+    }
+
+    if (!nextActors) {
+      nextActors = { ...workingState.actors };
+    }
+    nextActors[actorId] = updated;
+  }
+
+  if (!nextActors) {
+    return workingState;
+  }
+
+  return { ...workingState, actors: nextActors };
+}
+
 export function getConcentration(
   state: EncounterState,
   casterId: string,

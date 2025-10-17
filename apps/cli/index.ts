@@ -54,6 +54,7 @@ import {
   removeActorTag as encounterRemoveActorTag,
   clearActorTags as encounterClearActorTags,
   clearAllConcentration,
+  clearStatusEffects as encounterClearStatusEffects,
   shortRest as encounterShortRest,
   longRest as encounterLongRest,
   combineAdvantage,
@@ -224,6 +225,7 @@ function showUsage(): void {
   console.log('  pnpm dev -- encounter adv "<Name>" <on|off>');
   console.log('  pnpm dev -- encounter dis "<Name>" <on|off>');
   console.log('  pnpm dev -- encounter list');
+  console.log('  pnpm dev -- encounter clear <Who>');
   console.log('  pnpm dev -- encounter save "<name>"');
   console.log('  pnpm dev -- encounter ls');
   console.log('  pnpm dev -- encounter load "<name>"');
@@ -606,6 +608,56 @@ function findActorByIdentifier(state: EncounterState, identifier: string): Encou
   }
 
   throw new Error(`Multiple actors match "${identifier}". Use the actor id instead.`);
+}
+
+const SIDE_SELECTORS: Side[] = ['party', 'foe', 'neutral'];
+
+function collectActorIdsBySelector(state: EncounterState, selector: string): string[] {
+  const normalized = selector.trim().toLowerCase();
+  if (!normalized) {
+    return [];
+  }
+
+  if (normalized === 'all') {
+    return Object.keys(state.actors);
+  }
+
+  if ((SIDE_SELECTORS as string[]).includes(normalized)) {
+    return Object.values(state.actors)
+      .filter((actor) => actor.side === normalized)
+      .map((actor) => actor.id);
+  }
+
+  try {
+    const actor = findActorByIdentifier(state, selector);
+    return [actor.id];
+  } catch {
+    return [];
+  }
+}
+
+function handleEncounterClearCommand(rawArgs: string[]): void {
+  if (rawArgs.length === 0) {
+    console.error("Usage: pnpm dev -- encounter clear <Who>");
+    process.exit(1);
+  }
+
+  const [selector, ...rest] = rawArgs;
+  if (rest.length > 0) {
+    console.warn(`Ignoring extra argument(s): ${rest.join(', ')}`);
+  }
+
+  const encounter = requireEncounterState();
+  const actorIds = collectActorIdsBySelector(encounter, selector ?? '');
+  if (actorIds.length === 0) {
+    console.error(`No actors found for '${selector}'.`);
+    process.exit(1);
+  }
+
+  const updated = encounterClearStatusEffects(encounter, actorIds);
+  saveEncounter(updated);
+  console.log(`Cleared status from ${actorIds.length} actor(s).`);
+  process.exit(0);
 }
 
 function concentrationTargetSummary(state: EncounterState, entry: ConcentrationEntry): string {
@@ -5841,6 +5893,11 @@ async function handleEncounterCommand(rawArgs: string[]): Promise<void> {
 
   if (subcommand === 'mark') {
     await handleEncounterMarkCommand(rest);
+    return;
+  }
+
+  if (subcommand === 'clear') {
+    handleEncounterClearCommand(rest);
     return;
   }
 

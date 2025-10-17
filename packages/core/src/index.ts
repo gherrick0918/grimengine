@@ -101,6 +101,7 @@ export {
   clearActorTags,
   expireActorTags,
   clearAllConcentration,
+  clearStatusEffects,
   recordLoot,
   recordXP,
   startConcentration,
